@@ -3,14 +3,6 @@
 High-frame-rate battles, world map and fields for **Final Fantasy VIII** (Steam 2013) on top of
 **FFNx**. It does not speed the game up.
 
-> _Video / GIF placeholder: 15 fps vanilla vs 144 fps side by side._
-
-FF8's engine runs its logic at 15 steps per second in battle and 30 on the world map and in fields.
-FFNx presents one frame per logic step, so raising its frame rate makes the whole game run faster.
-FF8 Smooth Frames keeps every logic step on its original timing. Between two steps it draws extra
-frames: character poses, positions, the camera and battle effects are blended. The result is 144
-fps (or any rate you set) at the original game speed.
-
 It is a small DLL (`ff8interp.dll`) loaded next to an **unmodified** FFNx, packaged as a Junction
 VIII mod.
 

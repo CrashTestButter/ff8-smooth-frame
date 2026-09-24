@@ -1,0 +1,13 @@
+# build trees and outputs
+.build/
+build/
+out/
+dist/
+*.log
+*.iro
+*.zip
+*.pdb
+.vs/
+CMakeUserPresets.json
+# the DLL in mod/ is a build artefact (copy of out/ff8interp.dll)
+mod/ff8interp.dll

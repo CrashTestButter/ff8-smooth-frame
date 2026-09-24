@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModInfo>
+  <ID>47813641-5852-4e7a-926c-761e9118d79e</ID>
+  <Name>FF8 Smooth Frames</Name>
+  <Author>todi</Author>
+  <Version>0.2</Version>
+  <Category>Animations</Category>
+  <ReleaseDate>2026-09-24</ReleaseDate>
+  <Link>https://github.com/CrashTestButter/ff8-smooth-frame</Link>
+  <Description>Plays battles, the world map and fields at high frame rates (144 fps by default) without speeding the game up. The game logic keeps its original 15/30 fps timing. Characters, the camera and battle effects are interpolated between logic steps.
+
+Requires: the English Steam 2013 version of FF8 (FF8_EN.exe) and stock FFNx 1.24.3 or newer, as installed by Junction VIII. FFNx's ff8_fps_limiter must stay at 1 (the default), 2 or 3.
+
+Not smoothed yet: menus, card game, results screens, most summon cinematics (only Quezacotl and Shiva are paced), flipbook sprites. Do not combine with an FFNx build that has interpolation built in.
+
+Settings are in ff8interp.toml in this mod's folder. If something looks wrong, check ff8interp.log in the game folder.</Description>
+  <ReleaseNotes>0.2: first public build. Battle v74, world map v22, field v5; standalone DLL next to stock FFNx.</ReleaseNotes>
+  <LoadLibrary>ff8interp.dll</LoadLibrary>
+</ModInfo>

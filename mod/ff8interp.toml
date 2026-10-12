@@ -1,0 +1,67 @@
+# FF8 Smooth Frames (ff8interp.dll) settings.
+#
+# Same option names as the FFNx interpolation fork's FFNx.toml. Read once at game start from this
+# folder (next to ff8interp.dll); if it is missing here, from the game folder; if missing there too,
+# the built-in defaults below apply. Log: ff8interp.log in the game folder.
+#
+# The logic of every mode keeps its native rate (battle 15 Hz, world map / field 30 Hz). The *_fps
+# values only set how many frames per second are PRESENTED in that mode (30..1000). FFNx's
+# enable_vsync (default true) still caps presentation at the display refresh rate.
+
+## BATTLE
+# Interpolate battle model poses, positions, camera, effects and some HUD elements.
+ff8_battle_anim_interp = true
+# Battle frame rate, 30..1000. 0 = take it from FFNx's ff8_fps_limiter (2 -> 30, 3 -> 60, else off).
+ff8_battle_fps = 144
+# Kill switches for single battle gates, for bisecting problems in game (0 = everything on):
+#       1 = no blink / UI-clock gate (arrow, cursor flash and ready blink run at host rate)
+#       2 = never cut a freshly queued animation, always cross-fade it
+#       4 = OPT IN: pace the after-battle results screens at 60 Hz
+#       8 = no menu cursor auto-repeat pacing
+#      16 = no GF boost-gauge settle before a summon result
+#      32 = no impact / hit effect gate
+#      64 = death fade back to the plain frame skip
+#     128 = no GF cinematic pacing
+#     256 = no battle task-queue pacing
+#     512 = no magic primitive blending
+#    1024 = no Renzokuken trigger-bar blending
+#    2048 = magic blending without holding a logic tick's primitives back
+#    4096 = magic blending without the rectangle (sprite / tile) primitives
+#    8192 = no pad press-edge accumulation (Renzokuken / boost)
+#   16384 = new spell trees run at host rate until their second tick
+#   32768 = play clock (play time, event countdowns) at host rate
+#   65536 = GF boost settle only for Quezacotl
+#  131072 = old tick alpha with a one-frame lead
+#  262144 = Zell's Duel inputs read live
+#  524288 = battle-entry fade-in advances every frame (enemies pop in early)
+# 1048576 = battle intro loading chain and fade at host rate
+ff8_battle_interp_debug = 0
+
+## WORLD MAP
+ff8_world_interp = true
+# World map frame rate, 30..1000 (0 disables the world map module).
+ff8_world_fps = 144
+# 1 = no camera blend, 2 = no position blend, 4 = no pose blend, 8 = play clock at host rate,
+# 16 = old tick alpha with a one-frame lead
+ff8_world_interp_debug = 0
+
+## FIELD
+ff8_field_interp = true
+# Field frame rate, 30..1000 (0 = 60).
+ff8_field_fps = 144
+# 2 = no entity blend, 4 = no pose blend, 8 = play clock at host rate,
+# 16 = old tick alpha with a one-frame lead
+ff8_field_interp_debug = 0
+
+## DIAGNOSTICS
+# Verbose per-frame trace lines in ff8interp.log (large; only for bug reports).
+trace_battle_animation = false
+
+# Standalone only. true: if any code site the mod wants to hook was already changed by FFNx or
+# another mod, every ff8interp patch is rolled back and the game runs exactly as with FFNx alone.
+# false: keep the sites that could be hooked (the affected mode may then run its logic too fast).
+ff8interp_strict = true
+
+# Diagnostics: one INFO line per second in ff8interp.log with the detected mode, FFNx driver_mode,
+# the frame rate used, frames paced vs passed to FFNx and flips per second. Turn on for bug reports.
+ff8interp_diag = false

@@ -3,9 +3,12 @@
 Smooth, high-frame-rate battles, world map and fields for **Final Fantasy VIII** (Steam 2013),
 without speeding the game up.
 
-https://github.com/user-attachments/assets/52ea8750-5e22-49be-bf56-cdd4d54ad73e
 
-https://github.com/user-attachments/assets/96d77b3d-b08e-42d2-9f55-bc1cf1462e8e
+https://github.com/user-attachments/assets/468d1f51-1adc-4f08-bff4-41b3da8dfafc
+
+https://github.com/user-attachments/assets/8eb10c8f-4e2f-4291-b990-cfe3509c40ef
+
+
 
 FF8 normally moves at 15 frames per second in battle and 30 on the world map and in towns and
 dungeons. This mod draws the frames in between, so characters, the camera and spell effects move

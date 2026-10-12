@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
 
 # ff8interp.dll - FF8 frame interpolation as a standalone DLL next to a stock FFNx (AF3DN.P).
-# The interpolation module lives in interp/ (source of truth, see interp/SOURCE.md); src/ holds the
-# standalone host adapter, DLL entry, config and log.
+# The interpolation module lives in interp/; src/ holds the standalone host adapter, DLL entry,
+# config and log.
 
 project(ff8interp LANGUAGES CXX RC)
 

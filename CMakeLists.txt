@@ -20,6 +20,12 @@ set(VERSION_MAJOR ${CMAKE_MATCH_1})
 set(VERSION_MINOR ${CMAKE_MATCH_2})
 set(VERSION_BUGFIX 0${CMAKE_MATCH_3})
 math(EXPR VERSION_BUGFIX "${VERSION_BUGFIX}")
+option(FF8INTERP_DEV "kill bits and trace logging (OFF for player builds)" ON)
+if(FF8INTERP_DEV)
+  set(VERSION_TAG "${VERSION}-dev")
+else()
+  set(VERSION_TAG "${VERSION}")
+endif()
 configure_file(src/version.rc.in "${CMAKE_BINARY_DIR}/version.rc" @ONLY)
 
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
@@ -53,7 +59,8 @@ source_group("interp" FILES ${INTERP_SOURCES} ${INTERP_HEADERS})
 target_compile_features(ff8interp PRIVATE cxx_std_20)
 target_compile_definitions(ff8interp PRIVATE
   _CRT_SECURE_NO_WARNINGS
-  FF8INTERP_VERSION="${VERSION}"
+  FF8INTERP_VERSION="${VERSION_TAG}"
+  FF8INTERP_DEV=$<BOOL:${FF8INTERP_DEV}>
   NOMINMAX
 )
 target_compile_options(ff8interp PRIVATE

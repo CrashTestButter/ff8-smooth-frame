@@ -20,7 +20,7 @@ jobs:
       - name: Build
         env:
           PYTHON: python
-        run: tools/release.sh "${GITHUB_REF_NAME#v}"
+        run: tools/build-prod-release.sh "${GITHUB_REF_NAME#v}"
       - uses: actions/upload-artifact@v4
         with:
           name: FF8SmoothFrames

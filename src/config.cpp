@@ -113,14 +113,16 @@ namespace ff8interp
 
 		o.battle_enabled = get_bool(m, "ff8_battle_anim_interp", o.battle_enabled);
 		o.battle_fps = get_long(m, "ff8_battle_fps", o.battle_fps);
-		o.battle_debug = get_long(m, "ff8_battle_interp_debug", o.battle_debug);
 		o.world_enabled = get_bool(m, "ff8_world_interp", o.world_enabled);
 		o.world_fps = get_long(m, "ff8_world_fps", o.world_fps);
-		o.world_debug = get_long(m, "ff8_world_interp_debug", o.world_debug);
 		o.field_enabled = get_bool(m, "ff8_field_interp", o.field_enabled);
 		o.field_fps = get_long(m, "ff8_field_fps", o.field_fps);
+#if FF8INTERP_DEV
+		o.battle_debug = get_long(m, "ff8_battle_interp_debug", o.battle_debug);
+		o.world_debug = get_long(m, "ff8_world_interp_debug", o.world_debug);
 		o.field_debug = get_long(m, "ff8_field_interp_debug", o.field_debug);
 		o.trace = get_bool(m, "trace_battle_animation", o.trace);
+#endif
 		o.strict = get_bool(m, "ff8interp_strict", o.strict);
 		o.diag = get_bool(m, "ff8interp_diag", o.diag);
 

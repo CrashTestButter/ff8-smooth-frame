@@ -30,13 +30,17 @@ The first line must show the version from `mod/mod.xml`.
 
 ## Packaging
 
-`tools/release.sh <version>` builds the DLL from scratch and writes `dist/FF8SmoothFrames.iroj`
-and `dist/FF8SmoothFrames.zip` with that version and today's date in `mod.xml`. It runs in Git
-Bash on Windows and needs Python 3 (`PYTHON=python` if `python3` is not on the path).
+A plain CMake build is a development build: the log line reads `ff8interp 0.3-dev`, and
+`ff8interp.toml` also accepts the kill switches and trace logging used for bisecting.
+
+`tools/build-prod-release.sh <version>` makes the player build: kill switches and trace logging are
+compiled out (`-DFF8INTERP_DEV=OFF`). It packs `dist/FF8SmoothFrames.iroj` and
+`dist/FF8SmoothFrames.zip` with that version and today's date in `mod.xml`, plus one
+`fpsNNN[_diag]/ff8interp.toml` per Configure Mod choice. It runs in Git Bash on Windows and needs
+Python 3 (`PYTHON=python` if `python3` is not on the path).
 
 `tools/pack_iro.py` writes the same layout as J8's `IrosArc.Create` with "no compression"
-(`AppWrapper/IrosArc.cs`). To use J8's own packer instead: **Tools → IRO Tools...** in Junction
-VIII, source folder = `mod/`.
+(`AppWrapper/IrosArc.cs`).
 
 ## Releasing
 

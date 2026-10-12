@@ -3,17 +3,135 @@
   <ID>47813641-5852-4e7a-926c-761e9118d79e</ID>
   <Name>FF8 Smooth Frames</Name>
   <Author>todi</Author>
-  <Version>0.2</Version>
+  <Version>0.3</Version>
   <Category>Animations</Category>
   <ReleaseDate>2026-09-24</ReleaseDate>
   <Link>https://github.com/CrashTestButter/ff8-smooth-frame</Link>
-  <Description>Plays battles, the world map and fields at high frame rates (144 fps by default) without speeding the game up. The game logic keeps its original 15/30 fps timing. Characters, the camera and battle effects are interpolated between logic steps.
+  <Description>Plays battles, the world map and fields at high frame rates (144 fps by default, see Configure Mod) without speeding the game up. The game logic keeps its original 15/30 fps timing. Characters, the camera and battle effects are interpolated between logic steps.
 
 Requires: the English Steam 2013 version of FF8 (FF8_EN.exe) and stock FFNx 1.24.3 or newer, as installed by Junction VIII. FFNx's ff8_fps_limiter must stay at 1 (the default), 2 or 3.
 
 Not smoothed yet: menus, card game, results screens, most summon cinematics (only Quezacotl and Shiva are paced), flipbook sprites. Do not combine with an FFNx build that has interpolation built in.
 
-Settings are in ff8interp.toml in this mod's folder. If something looks wrong, check ff8interp.log in the game folder.</Description>
-  <ReleaseNotes>First public release.</ReleaseNotes>
+If something looks wrong, turn on Diagnostic log in Configure Mod and check ff8interp.log in the game folder.</Description>
+  <ReleaseNotes>0.3: frame rate and diagnostic log in Configure Mod. 0.2: first public release.</ReleaseNotes>
   <LoadLibrary>ff8interp.dll</LoadLibrary>
+  <ConfigOption>
+    <Name>Frame rate</Name>
+    <ID>FrameRate</ID>
+    <Type>List</Type>
+    <Default>144</Default>
+    <Description>Frames per second in battles, on the world map and in fields. The game keeps its normal speed. With vsync on, your display's refresh rate is the upper limit.</Description>
+    <Option Value="60" Name="60 fps" />
+    <Option Value="90" Name="90 fps" />
+    <Option Value="120" Name="120 fps" />
+    <Option Value="144" Name="144 fps" />
+    <Option Value="165" Name="165 fps" />
+    <Option Value="240" Name="240 fps" />
+  </ConfigOption>
+  <ConfigOption>
+    <Name>Diagnostic log</Name>
+    <ID>DiagLog</ID>
+    <Type>Bool</Type>
+    <Default>0</Default>
+    <Description>Writes one status line per second to ff8interp.log in the game folder. Turn on when reporting a problem.</Description>
+    <Option Value="0" Name="Off" />
+    <Option Value="1" Name="On" />
+  </ConfigOption>
+  <ModFolder Folder="fps60">
+    <ActiveWhen>
+      <And>
+        <Option>FrameRate=60</Option>
+        <Option>DiagLog=0</Option>
+      </And>
+    </ActiveWhen>
+  </ModFolder>
+  <ModFolder Folder="fps60_diag">
+    <ActiveWhen>
+      <And>
+        <Option>FrameRate=60</Option>
+        <Option>DiagLog=1</Option>
+      </And>
+    </ActiveWhen>
+  </ModFolder>
+  <ModFolder Folder="fps90">
+    <ActiveWhen>
+      <And>
+        <Option>FrameRate=90</Option>
+        <Option>DiagLog=0</Option>
+      </And>
+    </ActiveWhen>
+  </ModFolder>
+  <ModFolder Folder="fps90_diag">
+    <ActiveWhen>
+      <And>
+        <Option>FrameRate=90</Option>
+        <Option>DiagLog=1</Option>
+      </And>
+    </ActiveWhen>
+  </ModFolder>
+  <ModFolder Folder="fps120">
+    <ActiveWhen>
+      <And>
+        <Option>FrameRate=120</Option>
+        <Option>DiagLog=0</Option>
+      </And>
+    </ActiveWhen>
+  </ModFolder>
+  <ModFolder Folder="fps120_diag">
+    <ActiveWhen>
+      <And>
+        <Option>FrameRate=120</Option>
+        <Option>DiagLog=1</Option>
+      </And>
+    </ActiveWhen>
+  </ModFolder>
+  <ModFolder Folder="fps144">
+    <ActiveWhen>
+      <And>
+        <Option>FrameRate=144</Option>
+        <Option>DiagLog=0</Option>
+      </And>
+    </ActiveWhen>
+  </ModFolder>
+  <ModFolder Folder="fps144_diag">
+    <ActiveWhen>
+      <And>
+        <Option>FrameRate=144</Option>
+        <Option>DiagLog=1</Option>
+      </And>
+    </ActiveWhen>
+  </ModFolder>
+  <ModFolder Folder="fps165">
+    <ActiveWhen>
+      <And>
+        <Option>FrameRate=165</Option>
+        <Option>DiagLog=0</Option>
+      </And>
+    </ActiveWhen>
+  </ModFolder>
+  <ModFolder Folder="fps165_diag">
+    <ActiveWhen>
+      <And>
+        <Option>FrameRate=165</Option>
+        <Option>DiagLog=1</Option>
+      </And>
+    </ActiveWhen>
+  </ModFolder>
+  <ModFolder Folder="fps240">
+    <ActiveWhen>
+      <And>
+        <Option>FrameRate=240</Option>
+        <Option>DiagLog=0</Option>
+      </And>
+    </ActiveWhen>
+  </ModFolder>
+  <ModFolder Folder="fps240_diag">
+    <ActiveWhen>
+      <And>
+        <Option>FrameRate=240</Option>
+        <Option>DiagLog=1</Option>
+      </And>
+    </ActiveWhen>
+  </ModFolder>
 </ModInfo>

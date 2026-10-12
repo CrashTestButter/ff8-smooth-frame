@@ -1,5 +1,5 @@
-# FF8 Smooth Frames settings. To use them, put this file next to FF8_EN.exe.
-# The game keeps its normal speed; these values only set how many frames per second are shown
+# FF8 Smooth Frames settings. In Junction VIII, set these in Configure Mod instead of editing this file.
+# The game keeps its normal speed; the fps values only set how many frames per second are shown
 # (30 to 1000). With vsync on, the display's refresh rate is the upper limit.
 
 # Battles

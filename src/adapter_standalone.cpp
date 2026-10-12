@@ -619,15 +619,17 @@ namespace ff8interp
 			ff8_interp::InterpConfig& c = h.config;
 			c.battle_enabled = g_opt.battle_enabled;
 			c.battle_fps = g_opt.battle_fps;
-			c.battle_debug = g_opt.battle_debug;
 			c.world_enabled = g_opt.world_enabled;
 			c.world_fps = g_opt.world_fps;
-			c.world_debug = g_opt.world_debug;
 			c.field_enabled = g_opt.field_enabled;
 			c.field_fps = g_opt.field_fps;
-			c.field_debug = g_opt.field_debug;
 			c.host_limiter_fps = g_opt.ffnx_fps_limiter == 2 ? 30 : g_opt.ffnx_fps_limiter == 3 ? 60 : 0;
+#if FF8INTERP_DEV
+			c.battle_debug = g_opt.battle_debug;
+			c.world_debug = g_opt.world_debug;
+			c.field_debug = g_opt.field_debug;
 			c.trace = g_opt.trace;
+#endif
 
 			ff8_interp::install(h);
 			g_disk.release();
@@ -748,11 +750,19 @@ namespace ff8interp
 
 		g_opt = load_options(dll_dir, game_dir);
 		log_info("config: %s\n", g_opt.source.c_str());
+#if FF8INTERP_DEV
 		log_info("config: battle %s %ld fps (debug %ld), world %s %ld fps (debug %ld), field %s %ld fps (debug %ld), trace %d, strict %d, diag %d; FFNx ff8_fps_limiter = %ld\n",
 			g_opt.battle_enabled ? "on" : "off", g_opt.battle_fps, g_opt.battle_debug,
 			g_opt.world_enabled ? "on" : "off", g_opt.world_fps, g_opt.world_debug,
 			g_opt.field_enabled ? "on" : "off", g_opt.field_fps, g_opt.field_debug,
 			(int)g_opt.trace, (int)g_opt.strict, (int)g_opt.diag, g_opt.ffnx_fps_limiter);
+#else
+		log_info("config: battle %s %ld fps, world %s %ld fps, field %s %ld fps, strict %d, diag %d; FFNx ff8_fps_limiter = %ld\n",
+			g_opt.battle_enabled ? "on" : "off", g_opt.battle_fps,
+			g_opt.world_enabled ? "on" : "off", g_opt.world_fps,
+			g_opt.field_enabled ? "on" : "off", g_opt.field_fps,
+			(int)g_opt.strict, (int)g_opt.diag, g_opt.ffnx_fps_limiter);
+#endif
 
 		// Wait for FFNx's ff8_init_hooks: E9 at the limiter entry. If the graphics driver exists but the
 		// limiter stays vanilla, FFNx runs with ff8_fps_limiter = 0 and there is nothing to chain to.

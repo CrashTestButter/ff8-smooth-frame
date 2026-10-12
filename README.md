@@ -3,7 +3,9 @@
 Smooth, high-frame-rate battles, world map and fields for **Final Fantasy VIII** (Steam 2013),
 without speeding the game up.
 
-> _Video / GIF placeholder: 15 fps vanilla vs 144 fps side by side._
+https://github.com/user-attachments/assets/52ea8750-5e22-49be-bf56-cdd4d54ad73e
+
+https://github.com/user-attachments/assets/96d77b3d-b08e-42d2-9f55-bc1cf1462e8e
 
 FF8 normally moves at 15 frames per second in battle and 30 on the world map and in towns and
 dungeons. This mod draws the frames in between, so characters, the camera and spell effects move
@@ -35,15 +37,10 @@ apply when the game is started from Junction VIII.
 
 ## Settings
 
-To change the frame rate, download `FF8SmoothFrames.zip` from the release, take `ff8interp.toml`
-out of it, edit it, and put it next to `FF8_EN.exe` in the game folder.
+In Junction VIII, select **FF8 Smooth Frames** in your profile and click **Configure Mod**:
 
-| Setting | Default | |
-|---|---|---|
-| `ff8_battle_fps` | `144` | Battle frame rate (30 to 1000) |
-| `ff8_world_fps` | `144` | World map frame rate |
-| `ff8_field_fps` | `144` | Field frame rate (towns, dungeons) |
-| `ff8_battle_anim_interp`, `ff8_world_interp`, `ff8_field_interp` | `true` | Set to `false` to turn smoothing off in that part of the game |
+- **Frame rate**: 60, 90, 120, 144 (default), 165 or 240 fps. Pick your display's refresh rate.
+- **Diagnostic log**: turn on when reporting a problem.
 
 ## What is smooth so far
 
@@ -65,8 +62,8 @@ and chocobos on the world map are untested.
 ## Reporting a problem
 
 The mod writes `ff8interp.log` next to `FF8_EN.exe`. If something looks wrong or a place is still
-choppy, set `ff8interp_diag = true` in `ff8interp.toml`, play for a few seconds there, and attach
-the log to an [issue](https://github.com/CrashTestButter/ff8-smooth-frame/issues).
+choppy, turn on **Diagnostic log** in Configure Mod, play for a few seconds there, and attach the
+log to an [issue](https://github.com/CrashTestButter/ff8-smooth-frame/issues).
 
 ## Credits
 

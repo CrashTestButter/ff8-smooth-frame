@@ -25,6 +25,11 @@
 
 #include <stdint.h>
 
+// 0 = player build: kill bits and trace logging are compile-time off and drop out of the binary.
+#ifndef FF8INTERP_DEV
+#define FF8INTERP_DEV 1
+#endif
+
 namespace ff8_interp
 {
 	// Game mode as far as the module cares. The adapter maps the host's own mode detection onto it.
@@ -41,21 +46,28 @@ namespace ff8_interp
 	{
 		bool battle_enabled = false; // ff8_battle_anim_interp
 		long battle_fps = 0;         // ff8_battle_fps (0 = derive from host_limiter_fps, else 30..1000)
-		long battle_debug = 0;       // ff8_battle_interp_debug (kill bits, battle/internal.h DBG_*)
 
 		bool world_enabled = false;  // ff8_world_interp
 		long world_fps = 0;          // ff8_world_fps (30..1000)
-		long world_debug = 0;        // ff8_world_interp_debug
 
 		bool field_enabled = false;  // ff8_field_interp
 		long field_fps = 0;          // ff8_field_fps (0 = 60, clamped 30..1000)
-		long field_debug = 0;        // ff8_field_interp_debug
 
 		// Host frame cap in effect outside our overrides: 30 or 60, anything else 0. Only used as the
 		// battle rate when battle_fps is 0 (FFNx: ff8_fps_limiter 2 -> 30, 3 -> 60).
 		long host_limiter_fps = 0;
 
+#if FF8INTERP_DEV
+		long battle_debug = 0;       // ff8_battle_interp_debug (kill bits, battle/internal.h DBG_*)
+		long world_debug = 0;        // ff8_world_interp_debug
+		long field_debug = 0;        // ff8_field_interp_debug
 		bool trace = false;          // verbose trace lines (FFNx: trace_battle_animation)
+#else
+		static constexpr long battle_debug = 0;
+		static constexpr long world_debug = 0;
+		static constexpr long field_debug = 0;
+		static constexpr bool trace = false;
+#endif
 	};
 
 	struct InterpHost
@@ -109,5 +121,5 @@ namespace ff8_interp
 
 	template<typename... A> inline void log_info(const char* fmt, A... a) { g_host.log_info(fmt, a...); }
 	template<typename... A> inline void log_warning(const char* fmt, A... a) { g_host.log_warning(fmt, a...); }
-	template<typename... A> inline void log_trace(const char* fmt, A... a) { g_host.log_trace(fmt, a...); }
+	template<typename... A> inline void log_trace(const char* fmt, A... a) { if constexpr (FF8INTERP_DEV) g_host.log_trace(fmt, a...); }
 }

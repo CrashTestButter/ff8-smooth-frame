@@ -26,8 +26,8 @@
 //
 //   A. call-site freeze  - queue B (0x500923). The whole runner family reads FF8's own freeze bit
 //      0x1D96A9C & 1 and, with it set, draws and returns 0 without stepping. One save/set/restore
-//      around the one call covers all 67 appenders and every future per-spell runner. Rule 2 of
-//      verify-checklist.md: the bit is driven around ONE call only - frame-wide it would also stop
+//      around the one call covers all 67 appenders and every future per-spell runner. The bit is
+//      driven around ONE call only - frame-wide it would also stop
 //      0x502AB0 from reaching 0x504290 and kill pose interpolation.
 //   B. per-runner field hold - queue A (0x500917). None of its runners reads the freeze bit, so
 //      each one is hooked, called through, its own counter field(s) restored afterwards and the
@@ -60,25 +60,25 @@ namespace ff8_battle_anim
 
 		int hooks_installed = 0;
 
-		inline bool pace_off() { return (ff8_interp::cfg().battle_debug & DBG_QUEUE_PACE_OFF) != 0; }
+		inline bool queue_pacing_disabled() { return (ff8_interp::cfg().battle_debug & DBG_QUEUE_PACE_OFF) != 0; }
 
 		// True when this host frame must hold the queues' state. Call tick_update() first.
-		inline bool hold_frame() { return !tick_is_real(); }
+		inline bool is_held_frame() { return !is_logic_tick_now(); }
 
 		// Every queue runner is `int __cdecl fn(node*)`; 0x508420 pushes the node and pops it itself.
-		typedef int (__cdecl *node_fn_t)(uint8_t*);
+		typedef int (__cdecl *task_runner_t)(uint8_t*);
 
-		void* install_fn(uint32_t addr, const uint8_t* prologue, size_t len, void* hook, const char* what)
+		void* install_runner_hook(uint32_t address, const uint8_t* prologue, size_t prologue_length, void* hook, const char* description)
 		{
-			void* orig = make_trampoline(addr, prologue, len);
-			if (orig == nullptr)
+			void* trampoline = make_trampoline(address, prologue, prologue_length);
+			if (trampoline == nullptr)
 			{
-				ff8_interp::log_warning("fx_queues: prologue mismatch at 0x%X (%s), hook skipped.\n", addr, what);
+				ff8_interp::log_warning("fx_queues: prologue mismatch at 0x%X (%s), hook skipped.\n", address, description);
 				return nullptr;
 			}
-			ff8_interp::hook_function(addr, hook);
+			ff8_interp::hook_function(address, hook);
 			hooks_installed++;
-			return orig;
+			return trampoline;
 		}
 
 		// =========================================================================================
@@ -87,30 +87,30 @@ namespace ff8_battle_anim
 
 		// 0x508420(queue) is __cdecl with one argument; the driver pushes three queues and pops them
 		// in one `add esp` afterwards, so the hook must not clean the stack either.
-		constexpr uint32_t CS_QUEUE_B = 0x500923;        // call 0x508420(*0x1D96AA0)
+		constexpr uint32_t CALL_SITE_QUEUE_B = 0x500923;        // call 0x508420(*0x1D96AA0)
 		constexpr uint32_t FN_TASK_QUEUE = 0x508420;
 		typedef int (__cdecl *task_queue_t)(void*);
-		task_queue_t orig_task_queue = (task_queue_t)FN_TASK_QUEUE;
+		task_queue_t original_task_queue = (task_queue_t)FN_TASK_QUEUE;
 
 		bool traced_queue_b = false;
 
 		int __cdecl queue_b_hook(void* queue)
 		{
-			if (queue == nullptr || !in_battle() || pace_off()) return orig_task_queue(queue);
+			if (queue == nullptr || !in_battle() || queue_pacing_disabled()) return original_task_queue(queue);
 			tick_update();
-			if (!hold_frame()) return orig_task_queue(queue);
+			if (!is_held_frame()) return original_task_queue(queue);
 			// Every runner of the 0x56F9A0..0x571FFF family and of the 56 per-spell modules tests this
 			// bit and, when it is set, draws its fresh primitives and returns 0 without stepping.
-			uint32_t freeze = *BATTLE_FREEZE;
-			*BATTLE_FREEZE = freeze | 1;
-			int r = orig_task_queue(queue);
-			*BATTLE_FREEZE = freeze;
+			uint32_t saved_flags = *BATTLE_FREEZE;
+			*BATTLE_FREEZE = saved_flags | 1;
+			int result = original_task_queue(queue);
+			*BATTLE_FREEZE = saved_flags;
 			if (ff8_interp::cfg().trace && !traced_queue_b)
 			{
 				traced_queue_b = true;
-				ff8_interp::log_trace("ff8fxq f=%u queue B held under the freeze bit (site 0x%X)\n", ff8_interp::frame_counter(), CS_QUEUE_B);
+				ff8_interp::log_trace("ff8fxq f=%u queue B held under the freeze bit (site 0x%X)\n", ff8_interp::frame_counter(), CALL_SITE_QUEUE_B);
 			}
-			return r;
+			return result;
 		}
 
 		// The two twins of 0x570BC0 (which already has v58's impact_fx_hook in animations.cpp). Both
@@ -125,39 +125,39 @@ namespace ff8_battle_anim
 		const uint8_t FX_TWIN_PROLOGUE[6] = { 0x83, 0xEC, 0x08, 0x53, 0x56, 0x57 };       // sub esp,8 / push ebx,esi,edi
 		constexpr uint32_t ADDR_FX_DEBRIS = 0x56FCD0;    // 15-frame debris / dust flipbook
 		const uint8_t FX_DEBRIS_PROLOGUE[6] = { 0x55, 0x56, 0x8B, 0x74, 0x24, 0x0C };     // push ebp,esi / mov esi,[esp+0C]
-		constexpr uint32_t FX_STATE = 0x0C;
-		constexpr uint32_t FX_STATE_LEN = 12;            // +0x0C..+0x17 inclusive
-		node_fn_t orig_fx_twin = nullptr;
-		node_fn_t orig_fx_debris = nullptr;
+		constexpr uint32_t FX_NODE_STATE = 0x0C;
+		constexpr uint32_t FX_NODE_STATE_LENGTH = 12;    // +0x0C..+0x17 inclusive
+		task_runner_t original_fx_twin = nullptr;
+		task_runner_t original_fx_debris = nullptr;
 
-		int __cdecl fx_freeze_hold(node_fn_t orig, uint8_t* node)
+		int __cdecl run_frozen_keeping_node_state(task_runner_t runner, uint8_t* node)
 		{
-			uint8_t saved[FX_STATE_LEN];
-			memcpy(saved, node + FX_STATE, sizeof(saved));
-			uint32_t freeze = *BATTLE_FREEZE;
-			*BATTLE_FREEZE = freeze | 1;
-			int r = orig(node);
-			*BATTLE_FREEZE = freeze;
-			memcpy(node + FX_STATE, saved, sizeof(saved)); // undo 0x571BC0's in-place integration
-			return r;
+			uint8_t saved[FX_NODE_STATE_LENGTH];
+			memcpy(saved, node + FX_NODE_STATE, sizeof(saved));
+			uint32_t saved_flags = *BATTLE_FREEZE;
+			*BATTLE_FREEZE = saved_flags | 1;
+			int result = runner(node);
+			*BATTLE_FREEZE = saved_flags;
+			memcpy(node + FX_NODE_STATE, saved, sizeof(saved)); // undo 0x571BC0's in-place integration
+			return result;
 		}
 
 		int __cdecl fx_twin_hook(uint8_t* node)
 		{
-			if (orig_fx_twin == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_fx_twin(node);
+			if (original_fx_twin == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_fx_twin(node);
 			tick_update();
-			if (!hold_frame()) return orig_fx_twin(node);
-			return fx_freeze_hold(orig_fx_twin, node);
+			if (!is_held_frame()) return original_fx_twin(node);
+			return run_frozen_keeping_node_state(original_fx_twin, node);
 		}
 
 		int __cdecl fx_debris_hook(uint8_t* node)
 		{
-			if (orig_fx_debris == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_fx_debris(node);
+			if (original_fx_debris == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_fx_debris(node);
 			tick_update();
-			if (!hold_frame()) return orig_fx_debris(node);
-			return fx_freeze_hold(orig_fx_debris, node);
+			if (!is_held_frame()) return original_fx_debris(node);
+			return run_frozen_keeping_node_state(original_fx_debris, node);
 		}
 
 		// BIG TRAIL / RIBBON. The site gate already covers its stepping (+0x0C and +0x18 move only in
@@ -181,23 +181,23 @@ namespace ff8_battle_anim
 		constexpr uint32_t ADDR_FX_RIBBON = 0x56FE10;
 		const uint8_t FX_RIBBON_PROLOGUE[7] = { 0x83, 0xEC, 0x14, 0x53, 0x55, 0x56, 0x57 }; // sub esp,14h / push ebx,ebp,esi,edi
 		uint8_t* const FX_RIBBON_ANCHOR = (uint8_t*)0x209D790;   // s16 x, y, z
-		constexpr size_t FX_RIBBON_ANCHOR_LEN = 6;
-		node_fn_t orig_fx_ribbon = nullptr;
+		constexpr size_t FX_RIBBON_ANCHOR_LENGTH = 6;
+		task_runner_t original_fx_ribbon = nullptr;
 
 		int __cdecl fx_ribbon_hook(uint8_t* node)
 		{
-			if (orig_fx_ribbon == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_fx_ribbon(node);
+			if (original_fx_ribbon == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_fx_ribbon(node);
 			tick_update();
-			if (!hold_frame()) return orig_fx_ribbon(node);
-			uint8_t saved[FX_RIBBON_ANCHOR_LEN];
+			if (!is_held_frame()) return original_fx_ribbon(node);
+			uint8_t saved[FX_RIBBON_ANCHOR_LENGTH];
 			memcpy(saved, FX_RIBBON_ANCHOR, sizeof(saved));
-			uint32_t freeze = *BATTLE_FREEZE;
-			*BATTLE_FREEZE = freeze | 1;
-			int r = orig_fx_ribbon(node);
-			*BATTLE_FREEZE = freeze;
+			uint32_t saved_flags = *BATTLE_FREEZE;
+			*BATTLE_FREEZE = saved_flags | 1;
+			int result = original_fx_ribbon(node);
+			*BATTLE_FREEZE = saved_flags;
 			memcpy(FX_RIBBON_ANCHOR, saved, sizeof(saved)); // the frame-15 anchor is a one-shot
-			return r;
+			return result;
 		}
 
 		// The full-screen flash is the one runner of the family where the freeze bit is WRONG for us:
@@ -207,21 +207,21 @@ namespace ff8_battle_anim
 		constexpr uint32_t ADDR_FX_FLASH = 0x571300;     // 320x216 0x3000000 quad -> 0x45C8E0
 		const uint8_t FX_FLASH_PROLOGUE[7] = { 0x53, 0x8B, 0x5C, 0x24, 0x08, 0x55, 0x56 }; // push ebx / mov ebx,[esp+8] / push ebp,esi
 		constexpr uint32_t FX_FLASH_FRAME = 0x0C;
-		node_fn_t orig_fx_flash = nullptr;
+		task_runner_t original_fx_flash = nullptr;
 
 		int __cdecl fx_flash_hook(uint8_t* node)
 		{
-			if (orig_fx_flash == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_fx_flash(node);
+			if (original_fx_flash == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_fx_flash(node);
 			tick_update();
-			if (!hold_frame()) return orig_fx_flash(node);
-			uint16_t frame = *(uint16_t*)(node + FX_FLASH_FRAME);
-			uint32_t freeze = *BATTLE_FREEZE;
-			*BATTLE_FREEZE = freeze & ~1u;
-			int r = orig_fx_flash(node);
-			*BATTLE_FREEZE = freeze;
-			*(uint16_t*)(node + FX_FLASH_FRAME) = frame;
-			return r & ~2; // the hold undid the completion this call would have reported
+			if (!is_held_frame()) return original_fx_flash(node);
+			uint16_t saved_frame = *(uint16_t*)(node + FX_FLASH_FRAME);
+			uint32_t saved_flags = *BATTLE_FREEZE;
+			*BATTLE_FREEZE = saved_flags & ~1u;
+			int result = original_fx_flash(node);
+			*BATTLE_FREEZE = saved_flags;
+			*(uint16_t*)(node + FX_FLASH_FRAME) = saved_frame;
+			return result & ~2; // the hold undid the completion this call would have reported
 		}
 
 		// =========================================================================================
@@ -237,36 +237,36 @@ namespace ff8_battle_anim
 		constexpr uint32_t ADDR_SHAKE = 0x50F6C0;
 		const uint8_t SHAKE_PROLOGUE[7] = { 0x8B, 0x4C, 0x24, 0x04, 0x53, 0x55, 0x56 };  // mov ecx,[esp+4] / push ebx,ebp,esi
 		constexpr uint32_t SHAKE_COUNTER = 0x12;
-		node_fn_t orig_shake = nullptr;
+		task_runner_t original_shake = nullptr;
 
 		int __cdecl shake_hook(uint8_t* node)
 		{
-			if (orig_shake == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_shake(node);
+			if (original_shake == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_shake(node);
 			tick_update();
-			if (!hold_frame()) return orig_shake(node);
+			if (!is_held_frame()) return original_shake(node);
 			uint16_t saved = *(uint16_t*)(node + SHAKE_COUNTER);
-			int r = orig_shake(node);
+			int result = original_shake(node);
 			*(uint16_t*)(node + SHAKE_COUNTER) = saved;
-			return r & ~2;
+			return result & ~2;
 		}
 
 		// CAMERA LIVE->REST BLEND. 0x1D9771E = sin(node[0x0C] / node[0x0D]). Counter: u8 at +0x0C.
-		constexpr uint32_t ADDR_CAM_SETTLE = 0x509930;
-		const uint8_t CAM_SETTLE_PROLOGUE[5] = { 0x56, 0x8B, 0x74, 0x24, 0x08 };          // push esi / mov esi,[esp+8]
-		constexpr uint32_t CAM_SETTLE_COUNTER = 0x0C;
-		node_fn_t orig_cam_settle = nullptr;
+		constexpr uint32_t ADDR_CAMERA_SETTLE = 0x509930;
+		const uint8_t CAMERA_SETTLE_PROLOGUE[5] = { 0x56, 0x8B, 0x74, 0x24, 0x08 };          // push esi / mov esi,[esp+8]
+		constexpr uint32_t CAMERA_SETTLE_COUNTER = 0x0C;
+		task_runner_t original_camera_settle = nullptr;
 
-		int __cdecl cam_settle_hook(uint8_t* node)
+		int __cdecl camera_settle_hook(uint8_t* node)
 		{
-			if (orig_cam_settle == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_cam_settle(node);
+			if (original_camera_settle == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_camera_settle(node);
 			tick_update();
-			if (!hold_frame()) return orig_cam_settle(node);
-			uint8_t saved = node[CAM_SETTLE_COUNTER];
-			int r = orig_cam_settle(node);
-			node[CAM_SETTLE_COUNTER] = saved;
-			return r & ~2;
+			if (!is_held_frame()) return original_camera_settle(node);
+			uint8_t saved = node[CAMERA_SETTLE_COUNTER];
+			int result = original_camera_settle(node);
+			node[CAMERA_SETTLE_COUNTER] = saved;
+			return result & ~2;
 		}
 
 		// FULL-SCREEN COLOUR QUAD (limit-break / impact fade). Ramps node[0x10] -> node[0x11] over
@@ -277,20 +277,20 @@ namespace ff8_battle_anim
 		const uint8_t FADE_QUAD_PROLOGUE[6] = { 0x56, 0x57, 0x8B, 0x7C, 0x24, 0x0C };     // push esi,edi / mov edi,[esp+0C]
 		constexpr uint32_t FADE_QUAD_COUNTER = 0x0C;
 		uint32_t* const FADE_QUAD_DONE = (uint32_t*)0x1D96EBC;
-		node_fn_t orig_fade_quad = nullptr;
+		task_runner_t original_fade_quad = nullptr;
 
 		int __cdecl fade_quad_hook(uint8_t* node)
 		{
-			if (orig_fade_quad == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_fade_quad(node);
+			if (original_fade_quad == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_fade_quad(node);
 			tick_update();
-			if (!hold_frame()) return orig_fade_quad(node);
+			if (!is_held_frame()) return original_fade_quad(node);
 			uint16_t saved = *(uint16_t*)(node + FADE_QUAD_COUNTER);
-			uint32_t done = *FADE_QUAD_DONE;
-			int r = orig_fade_quad(node);
+			uint32_t saved_done = *FADE_QUAD_DONE;
+			int result = original_fade_quad(node);
 			*(uint16_t*)(node + FADE_QUAD_COUNTER) = saved;
-			*FADE_QUAD_DONE = done;
-			return r & ~2;
+			*FADE_QUAD_DONE = saved_done;
+			return result & ~2;
 		}
 
 		// STAGE BRIGHTNESS RAMP. Writes a brightness word into the four stage-part records
@@ -298,18 +298,18 @@ namespace ff8_battle_anim
 		constexpr uint32_t ADDR_STAGE_BRIGHT = 0x501F90;
 		const uint8_t STAGE_BRIGHT_PROLOGUE[5] = { 0x56, 0x8B, 0x74, 0x24, 0x08 };        // push esi / mov esi,[esp+8]
 		constexpr uint32_t STAGE_BRIGHT_COUNTER = 0x0C;
-		node_fn_t orig_stage_bright = nullptr;
+		task_runner_t original_stage_bright = nullptr;
 
 		int __cdecl stage_bright_hook(uint8_t* node)
 		{
-			if (orig_stage_bright == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_stage_bright(node);
+			if (original_stage_bright == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_stage_bright(node);
 			tick_update();
-			if (!hold_frame()) return orig_stage_bright(node);
+			if (!is_held_frame()) return original_stage_bright(node);
 			uint16_t saved = *(uint16_t*)(node + STAGE_BRIGHT_COUNTER);
-			int r = orig_stage_bright(node);
+			int result = original_stage_bright(node);
 			*(uint16_t*)(node + STAGE_BRIGHT_COUNTER) = saved;
-			return r & ~2;
+			return result & ~2;
 		}
 
 		// HIT / CRIT COLOUR BLINK. Walks a script of durations (cursor: u32 at +0x10) and toggles the
@@ -321,20 +321,20 @@ namespace ff8_battle_anim
 		constexpr uint32_t ADDR_CRIT_FLASH = 0x5057D0;
 		const uint8_t CRIT_FLASH_PROLOGUE[5] = { 0x56, 0x8B, 0x74, 0x24, 0x08 };          // push esi / mov esi,[esp+8]
 		constexpr uint32_t CRIT_FLASH_STATE = 0x10;
-		constexpr uint32_t CRIT_FLASH_STATE_LEN = 8;
-		node_fn_t orig_crit_flash = nullptr;
+		constexpr uint32_t CRIT_FLASH_STATE_LENGTH = 8;
+		task_runner_t original_crit_flash = nullptr;
 
 		int __cdecl crit_flash_hook(uint8_t* node)
 		{
-			if (orig_crit_flash == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_crit_flash(node);
+			if (original_crit_flash == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_crit_flash(node);
 			tick_update();
-			if (!hold_frame()) return orig_crit_flash(node);
-			uint8_t saved[CRIT_FLASH_STATE_LEN];
+			if (!is_held_frame()) return original_crit_flash(node);
+			uint8_t saved[CRIT_FLASH_STATE_LENGTH];
 			memcpy(saved, node + CRIT_FLASH_STATE, sizeof(saved));
-			int r = orig_crit_flash(node);
+			int result = original_crit_flash(node);
 			memcpy(node + CRIT_FLASH_STATE, saved, sizeof(saved));
-			return r & ~2;
+			return result & ~2;
 		}
 
 		// 15-FRAME STENCIL FLASH on a model (0x50F190 -> 0x5099D0, alpha node[0x13]*0x1000/15).
@@ -344,19 +344,19 @@ namespace ff8_battle_anim
 		// PROLOGUE CONSTRAINT: E8 at +5, so the cut must be exactly 5 bytes.
 		constexpr uint32_t ADDR_STENCIL_FLASH = 0x50F0E0;
 		const uint8_t STENCIL_FLASH_PROLOGUE[5] = { 0x53, 0x56, 0x57, 0x6A, 0x4C };       // push ebx,esi,edi / push 4Ch  (E8 follows)
-		constexpr uint32_t STENCIL_FRAME = 0x13;
-		node_fn_t orig_stencil_flash = nullptr;
+		constexpr uint32_t STENCIL_FLASH_FRAME = 0x13;
+		task_runner_t original_stencil_flash = nullptr;
 
 		int __cdecl stencil_flash_hook(uint8_t* node)
 		{
-			if (orig_stencil_flash == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_stencil_flash(node);
+			if (original_stencil_flash == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_stencil_flash(node);
 			tick_update();
-			if (!hold_frame()) return orig_stencil_flash(node);
-			uint8_t saved = node[STENCIL_FRAME];
-			int r = orig_stencil_flash(node);
-			node[STENCIL_FRAME] = saved;
-			return r & ~2;
+			if (!is_held_frame()) return original_stencil_flash(node);
+			uint8_t saved = node[STENCIL_FLASH_FRAME];
+			int result = original_stencil_flash(node);
+			node[STENCIL_FLASH_FRAME] = saved;
+			return result & ~2;
 		}
 
 		// The same flash on a BONE CHAIN, with a decaying wobble. This one already guards its wobble
@@ -371,21 +371,21 @@ namespace ff8_battle_anim
 		// PROLOGUE CONSTRAINT: E8 at +6, so the cut must be exactly 6 bytes.
 		constexpr uint32_t ADDR_BONE_FLASH = 0x50F2E0;
 		const uint8_t BONE_FLASH_PROLOGUE[6] = { 0x53, 0x55, 0x56, 0x57, 0x6A, 0x4C };    // push ebx,ebp,esi,edi / push 4Ch  (E8 follows)
-		node_fn_t orig_bone_flash = nullptr;
+		task_runner_t original_bone_flash = nullptr;
 
 		int __cdecl bone_flash_hook(uint8_t* node)
 		{
-			if (orig_bone_flash == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_bone_flash(node);
+			if (original_bone_flash == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_bone_flash(node);
 			tick_update();
-			if (!hold_frame()) return orig_bone_flash(node);
-			uint8_t saved = node[STENCIL_FRAME];
-			uint32_t freeze = *BATTLE_FREEZE;
-			*BATTLE_FREEZE = freeze | 1;
-			int r = orig_bone_flash(node);
-			*BATTLE_FREEZE = freeze;
-			node[STENCIL_FRAME] = saved;
-			return r & ~2;
+			if (!is_held_frame()) return original_bone_flash(node);
+			uint8_t saved = node[STENCIL_FLASH_FRAME];
+			uint32_t saved_flags = *BATTLE_FREEZE;
+			*BATTLE_FREEZE = saved_flags | 1;
+			int result = original_bone_flash(node);
+			*BATTLE_FREEZE = saved_flags;
+			node[STENCIL_FLASH_FRAME] = saved;
+			return result & ~2;
 		}
 
 		// DRAG ENTITY TO TARGET. Adds (source bone - target bone) into entity+0x54/58/5C every call;
@@ -396,18 +396,18 @@ namespace ff8_battle_anim
 		constexpr uint32_t ADDR_DRAG = 0x50F500;
 		const uint8_t DRAG_PROLOGUE[5] = { 0x53, 0x56, 0x57, 0x6A, 0x10 };                // push ebx,esi,edi / push 10h  (E8 follows)
 		constexpr uint32_t DRAG_COUNTER = 0x18;
-		node_fn_t orig_drag = nullptr;
+		task_runner_t original_drag = nullptr;
 
 		int __cdecl drag_hook(uint8_t* node)
 		{
-			if (orig_drag == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_drag(node);
+			if (original_drag == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_drag(node);
 			tick_update();
-			if (!hold_frame()) return orig_drag(node);
+			if (!is_held_frame()) return original_drag(node);
 			int32_t saved = *(int32_t*)(node + DRAG_COUNTER);
-			int r = orig_drag(node);
+			int result = original_drag(node);
 			*(int32_t*)(node + DRAG_COUNTER) = saved;
-			return r & ~2;
+			return result & ~2;
 		}
 
 		// TWEEN of two shorts (camera zoom / roll) on the struct at *(node+0x0C), over node+0x14
@@ -418,30 +418,30 @@ namespace ff8_battle_anim
 		const uint8_t TWEEN_PROLOGUE[7] = { 0x8B, 0x4C, 0x24, 0x04, 0x53, 0x55, 0x56 };   // mov ecx,[esp+4] / push ebx,ebp,esi
 		constexpr uint32_t TWEEN_COUNTER = 0x16;
 		constexpr uint32_t TWEEN_TARGET = 0x0C;
-		node_fn_t orig_tween = nullptr;
+		task_runner_t original_tween = nullptr;
 
 		int __cdecl tween_hook(uint8_t* node)
 		{
-			if (orig_tween == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_tween(node);
+			if (original_tween == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_tween(node);
 			tick_update();
-			if (!hold_frame()) return orig_tween(node);
+			if (!is_held_frame()) return original_tween(node);
 			uint16_t saved = *(uint16_t*)(node + TWEEN_COUNTER);
 			uint8_t* target = *(uint8_t**)(node + TWEEN_TARGET);
-			uint16_t from_a = 0, from_b = 0;
+			uint16_t saved_source_a = 0, saved_source_b = 0;
 			if (target != nullptr)
 			{
-				from_a = *(uint16_t*)(target + 0x14);
-				from_b = *(uint16_t*)(target + 0x18);
+				saved_source_a = *(uint16_t*)(target + 0x14);
+				saved_source_b = *(uint16_t*)(target + 0x18);
 			}
-			int r = orig_tween(node);
+			int result = original_tween(node);
 			*(uint16_t*)(node + TWEEN_COUNTER) = saved;
 			if (target != nullptr)
 			{
-				*(uint16_t*)(target + 0x14) = from_a;
-				*(uint16_t*)(target + 0x18) = from_b;
+				*(uint16_t*)(target + 0x14) = saved_source_a;
+				*(uint16_t*)(target + 0x18) = saved_source_b;
 			}
-			return r & ~2;
+			return result & ~2;
 		}
 
 		// MULTI-HIT SPAWNER. The only queue A runner that draws NOTHING: every `script[0] & 0x3F`
@@ -450,14 +450,14 @@ namespace ff8_battle_anim
 		// skipped outright on held frames - which is also exactly the vanilla cadence.
 		constexpr uint32_t ADDR_MULTIHIT = 0x50F830;
 		const uint8_t MULTIHIT_PROLOGUE[6] = { 0x53, 0x56, 0x8B, 0x74, 0x24, 0x0C };      // push ebx,esi / mov esi,[esp+0C]
-		node_fn_t orig_multihit = nullptr;
+		task_runner_t original_multihit = nullptr;
 
 		int __cdecl multihit_hook(uint8_t* node)
 		{
-			if (orig_multihit == nullptr) return 0;
-			if (node == nullptr || !in_battle() || pace_off()) return orig_multihit(node);
+			if (original_multihit == nullptr) return 0;
+			if (node == nullptr || !in_battle() || queue_pacing_disabled()) return original_multihit(node);
 			tick_update();
-			if (!hold_frame()) return orig_multihit(node);
+			if (!is_held_frame()) return original_multihit(node);
 			return 0; // nothing to draw, nothing to hold - just do not spawn ten times per logic frame
 		}
 
@@ -476,28 +476,44 @@ namespace ff8_battle_anim
 		// Ghidra types the parameter as ushort*, so its `*(int *)(param_1 + 0x44)` is byte offset
 		// 0x88. Verified in the listing: 0x50A18B/0x50A19E, 0x50A237/0x50A265, 0x50A3C0, 0x50A614 all
 		// load [entity+0x88] and nothing in 0x50A0A0 touches entity+0x44.
-		constexpr uint32_t CS_STATUS_FX = 0x502B5D;      // call 0x50A0A0(entity), cdecl, one argument
+		constexpr uint32_t CALL_SITE_STATUS_FX = 0x502B5D;      // call 0x50A0A0(entity), cdecl, one argument
 		constexpr uint32_t FN_STATUS_FX = 0x50A0A0;      // prologue 57 8B 7C 24 08 (call site hooked, no trampoline)
 		typedef void (__cdecl *status_fx_t)(uint8_t*);
-		status_fx_t orig_status_fx = (status_fx_t)FN_STATUS_FX;
+		status_fx_t original_status_fx = (status_fx_t)FN_STATUS_FX;
 
-		const uint8_t STATUS_PHASE_IDX[6] = { 0x09, 0x0A, 0x0B, 0x11, 0x12, 0x19 };
-		const uint8_t STATUS_ANIM_IDX[5]  = { 0x05, 0x06, 0x07, 0x08, 0x0C };
+		const uint8_t STATUS_PHASE_INDICES[6]     = { 0x09, 0x0A, 0x0B, 0x11, 0x12, 0x19 };
+		const uint8_t STATUS_ANIMATION_INDICES[5] = { 0x05, 0x06, 0x07, 0x08, 0x0C };
 
-		void __cdecl status_fx_hook(uint8_t* e)
+		void __cdecl status_fx_hook(uint8_t* entity)
 		{
-			if (e == nullptr || !in_battle() || pace_off()) { orig_status_fx(e); return; }
+			if (entity == nullptr || !in_battle() || queue_pacing_disabled())
+			{
+				original_status_fx(entity);
+				return;
+			}
 			tick_update();
-			if (!hold_frame()) { orig_status_fx(e); return; }
-			uint8_t* s = *(uint8_t**)(e + 0x88);
-			if (s == nullptr) { orig_status_fx(e); return; }
-			uint8_t phase[sizeof(STATUS_PHASE_IDX)];
-			uint8_t anim[sizeof(STATUS_ANIM_IDX)];
-			for (size_t i = 0; i < sizeof(STATUS_PHASE_IDX); i++) phase[i] = s[STATUS_PHASE_IDX[i]];
-			for (size_t i = 0; i < sizeof(STATUS_ANIM_IDX); i++) anim[i] = s[STATUS_ANIM_IDX[i]];
-			orig_status_fx(e);
-			for (size_t i = 0; i < sizeof(STATUS_PHASE_IDX); i++) s[STATUS_PHASE_IDX[i]] = phase[i];
-			for (size_t i = 0; i < sizeof(STATUS_ANIM_IDX); i++) s[STATUS_ANIM_IDX[i]] = anim[i];
+			if (!is_held_frame())
+			{
+				original_status_fx(entity);
+				return;
+			}
+			uint8_t* status_bytes = *(uint8_t**)(entity + 0x88);
+			if (status_bytes == nullptr)
+			{
+				original_status_fx(entity);
+				return;
+			}
+			uint8_t saved_phases[sizeof(STATUS_PHASE_INDICES)];
+			uint8_t saved_animation_states[sizeof(STATUS_ANIMATION_INDICES)];
+			for (size_t i = 0; i < sizeof(STATUS_PHASE_INDICES); i++)
+				saved_phases[i] = status_bytes[STATUS_PHASE_INDICES[i]];
+			for (size_t i = 0; i < sizeof(STATUS_ANIMATION_INDICES); i++)
+				saved_animation_states[i] = status_bytes[STATUS_ANIMATION_INDICES[i]];
+			original_status_fx(entity);
+			for (size_t i = 0; i < sizeof(STATUS_PHASE_INDICES); i++)
+				status_bytes[STATUS_PHASE_INDICES[i]] = saved_phases[i];
+			for (size_t i = 0; i < sizeof(STATUS_ANIMATION_INDICES); i++)
+				status_bytes[STATUS_ANIMATION_INDICES[i]] = saved_animation_states[i];
 		}
 
 		// =========================================================================================
@@ -521,26 +537,34 @@ namespace ff8_battle_anim
 		// BEFORE the accumulate, so saving the dword before 0x506C30 and restoring it after makes every
 		// host frame draw the same sky angle and a tick frame advance it exactly once. It cannot move
 		// the camera: the value only reaches 0x56CE30 as a Y rotation for the stage parts.
-		constexpr uint32_t CS_QUEUE_D = 0x50097E;        // call 0x506C30, void __cdecl(void)
+		constexpr uint32_t CALL_SITE_QUEUE_D = 0x50097E;        // call 0x506C30, void __cdecl(void)
 		constexpr uint32_t FN_QUEUE_D = 0x506C30;        // if (*0x1D98A40) 0x508420(*0x1D98A40)
 		typedef void (__cdecl *queue_d_t)();
-		queue_d_t orig_queue_d = (queue_d_t)FN_QUEUE_D;
-		uint32_t* const STAGE_SPIN = (uint32_t*)0x1D96DA4;
+		queue_d_t original_queue_d = (queue_d_t)FN_QUEUE_D;
+		uint32_t* const STAGE_SPIN_ACCUMULATOR = (uint32_t*)0x1D96DA4;
 
 		bool traced_stage = false;
 
 		void __cdecl queue_d_hook()
 		{
-			if (!in_battle() || pace_off()) { orig_queue_d(); return; }
+			if (!in_battle() || queue_pacing_disabled())
+			{
+				original_queue_d();
+				return;
+			}
 			tick_update();
-			if (!hold_frame()) { orig_queue_d(); return; }
-			uint32_t spin = *STAGE_SPIN;
-			orig_queue_d();
-			*STAGE_SPIN = spin;
+			if (!is_held_frame())
+			{
+				original_queue_d();
+				return;
+			}
+			uint32_t saved_spin = *STAGE_SPIN_ACCUMULATOR;
+			original_queue_d();
+			*STAGE_SPIN_ACCUMULATOR = saved_spin;
 			if (ff8_interp::cfg().trace && !traced_stage)
 			{
 				traced_stage = true;
-				ff8_interp::log_trace("ff8fxq f=%u background spin 0x1D96DA4 held (%u) across queue D\n", ff8_interp::frame_counter(), spin);
+				ff8_interp::log_trace("ff8fxq f=%u background spin 0x1D96DA4 held (%u) across queue D\n", ff8_interp::frame_counter(), saved_spin);
 			}
 		}
 	}
@@ -550,31 +574,31 @@ namespace ff8_battle_anim
 		hooks_installed = 0;
 
 		// 1. Queue B: the call-site freeze plus the four runners with work outside the bit test.
-		ff8_interp::hook_call(CS_QUEUE_B, (void*)queue_b_hook);
+		ff8_interp::hook_call(CALL_SITE_QUEUE_B, (void*)queue_b_hook);
 		hooks_installed++;
-		orig_fx_twin = (node_fn_t)install_fn(ADDR_FX_TWIN, FX_TWIN_PROLOGUE, sizeof(FX_TWIN_PROLOGUE), (void*)fx_twin_hook, "impact fx twin");
-		orig_fx_debris = (node_fn_t)install_fn(ADDR_FX_DEBRIS, FX_DEBRIS_PROLOGUE, sizeof(FX_DEBRIS_PROLOGUE), (void*)fx_debris_hook, "debris flipbook");
-		orig_fx_ribbon = (node_fn_t)install_fn(ADDR_FX_RIBBON, FX_RIBBON_PROLOGUE, sizeof(FX_RIBBON_PROLOGUE), (void*)fx_ribbon_hook, "big trail/ribbon");
-		orig_fx_flash = (node_fn_t)install_fn(ADDR_FX_FLASH, FX_FLASH_PROLOGUE, sizeof(FX_FLASH_PROLOGUE), (void*)fx_flash_hook, "full-screen flash");
+		original_fx_twin = (task_runner_t)install_runner_hook(ADDR_FX_TWIN, FX_TWIN_PROLOGUE, sizeof(FX_TWIN_PROLOGUE), (void*)fx_twin_hook, "impact fx twin");
+		original_fx_debris = (task_runner_t)install_runner_hook(ADDR_FX_DEBRIS, FX_DEBRIS_PROLOGUE, sizeof(FX_DEBRIS_PROLOGUE), (void*)fx_debris_hook, "debris flipbook");
+		original_fx_ribbon = (task_runner_t)install_runner_hook(ADDR_FX_RIBBON, FX_RIBBON_PROLOGUE, sizeof(FX_RIBBON_PROLOGUE), (void*)fx_ribbon_hook, "big trail/ribbon");
+		original_fx_flash = (task_runner_t)install_runner_hook(ADDR_FX_FLASH, FX_FLASH_PROLOGUE, sizeof(FX_FLASH_PROLOGUE), (void*)fx_flash_hook, "full-screen flash");
 
 		// 2. Queue A: the ten runners that ignore the freeze bit.
-		orig_shake = (node_fn_t)install_fn(ADDR_SHAKE, SHAKE_PROLOGUE, sizeof(SHAKE_PROLOGUE), (void*)shake_hook, "screen shake");
-		orig_cam_settle = (node_fn_t)install_fn(ADDR_CAM_SETTLE, CAM_SETTLE_PROLOGUE, sizeof(CAM_SETTLE_PROLOGUE), (void*)cam_settle_hook, "camera settle");
-		orig_fade_quad = (node_fn_t)install_fn(ADDR_FADE_QUAD, FADE_QUAD_PROLOGUE, sizeof(FADE_QUAD_PROLOGUE), (void*)fade_quad_hook, "fade quad");
-		orig_stage_bright = (node_fn_t)install_fn(ADDR_STAGE_BRIGHT, STAGE_BRIGHT_PROLOGUE, sizeof(STAGE_BRIGHT_PROLOGUE), (void*)stage_bright_hook, "stage brightness");
-		orig_crit_flash = (node_fn_t)install_fn(ADDR_CRIT_FLASH, CRIT_FLASH_PROLOGUE, sizeof(CRIT_FLASH_PROLOGUE), (void*)crit_flash_hook, "crit colour blink");
-		orig_stencil_flash = (node_fn_t)install_fn(ADDR_STENCIL_FLASH, STENCIL_FLASH_PROLOGUE, sizeof(STENCIL_FLASH_PROLOGUE), (void*)stencil_flash_hook, "stencil flash");
-		orig_bone_flash = (node_fn_t)install_fn(ADDR_BONE_FLASH, BONE_FLASH_PROLOGUE, sizeof(BONE_FLASH_PROLOGUE), (void*)bone_flash_hook, "bone stencil flash");
-		orig_drag = (node_fn_t)install_fn(ADDR_DRAG, DRAG_PROLOGUE, sizeof(DRAG_PROLOGUE), (void*)drag_hook, "drag to target");
-		orig_tween = (node_fn_t)install_fn(ADDR_TWEEN, TWEEN_PROLOGUE, sizeof(TWEEN_PROLOGUE), (void*)tween_hook, "camera tween");
-		orig_multihit = (node_fn_t)install_fn(ADDR_MULTIHIT, MULTIHIT_PROLOGUE, sizeof(MULTIHIT_PROLOGUE), (void*)multihit_hook, "multi-hit spawner");
+		original_shake = (task_runner_t)install_runner_hook(ADDR_SHAKE, SHAKE_PROLOGUE, sizeof(SHAKE_PROLOGUE), (void*)shake_hook, "screen shake");
+		original_camera_settle = (task_runner_t)install_runner_hook(ADDR_CAMERA_SETTLE, CAMERA_SETTLE_PROLOGUE, sizeof(CAMERA_SETTLE_PROLOGUE), (void*)camera_settle_hook, "camera settle");
+		original_fade_quad = (task_runner_t)install_runner_hook(ADDR_FADE_QUAD, FADE_QUAD_PROLOGUE, sizeof(FADE_QUAD_PROLOGUE), (void*)fade_quad_hook, "fade quad");
+		original_stage_bright = (task_runner_t)install_runner_hook(ADDR_STAGE_BRIGHT, STAGE_BRIGHT_PROLOGUE, sizeof(STAGE_BRIGHT_PROLOGUE), (void*)stage_bright_hook, "stage brightness");
+		original_crit_flash = (task_runner_t)install_runner_hook(ADDR_CRIT_FLASH, CRIT_FLASH_PROLOGUE, sizeof(CRIT_FLASH_PROLOGUE), (void*)crit_flash_hook, "crit colour blink");
+		original_stencil_flash = (task_runner_t)install_runner_hook(ADDR_STENCIL_FLASH, STENCIL_FLASH_PROLOGUE, sizeof(STENCIL_FLASH_PROLOGUE), (void*)stencil_flash_hook, "stencil flash");
+		original_bone_flash = (task_runner_t)install_runner_hook(ADDR_BONE_FLASH, BONE_FLASH_PROLOGUE, sizeof(BONE_FLASH_PROLOGUE), (void*)bone_flash_hook, "bone stencil flash");
+		original_drag = (task_runner_t)install_runner_hook(ADDR_DRAG, DRAG_PROLOGUE, sizeof(DRAG_PROLOGUE), (void*)drag_hook, "drag to target");
+		original_tween = (task_runner_t)install_runner_hook(ADDR_TWEEN, TWEEN_PROLOGUE, sizeof(TWEEN_PROLOGUE), (void*)tween_hook, "camera tween");
+		original_multihit = (task_runner_t)install_runner_hook(ADDR_MULTIHIT, MULTIHIT_PROLOGUE, sizeof(MULTIHIT_PROLOGUE), (void*)multihit_hook, "multi-hit spawner");
 
 		// 3. Status glow / float / icons: the call site only, the call itself always runs.
-		ff8_interp::hook_call(CS_STATUS_FX, (void*)status_fx_hook);
+		ff8_interp::hook_call(CALL_SITE_STATUS_FX, (void*)status_fx_hook);
 		hooks_installed++;
 
 		// 4. Queue D: the background spin hold only - see the DO NOT RETRY note above.
-		ff8_interp::hook_call(CS_QUEUE_D, (void*)queue_d_hook);
+		ff8_interp::hook_call(CALL_SITE_QUEUE_D, (void*)queue_d_hook);
 		hooks_installed++;
 
 		ff8_interp::log_info("%s: battle task-queue pacing installed, %d hooks (queue B site + 4 runners, queue A 10 runners, status fx, queue D spin hold).\n", __func__, hooks_installed);

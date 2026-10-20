@@ -26,7 +26,7 @@ namespace ff8interp
 {
 	// ---- log.cpp: ff8interp.log in the game folder ----
 	void log_open();
-	void log_line(const char* level, const char* fmt, va_list ap);
+	void log_line(const char* level, const char* fmt, va_list args);
 	void log_info(const char* fmt, ...);
 	void log_warning(const char* fmt, ...);
 	void log_error(const char* fmt, ...);
@@ -38,6 +38,7 @@ namespace ff8interp
 		bool battle_enabled = true;  // ff8_battle_anim_interp
 		long battle_fps = 144;       // ff8_battle_fps
 		long battle_debug = 0;       // ff8_battle_interp_debug
+		long battle_debug2 = 0;      // ff8_battle_interp_debug2 (second mask, DBG2_*)
 		bool world_enabled = true;   // ff8_world_interp
 		long world_fps = 144;        // ff8_world_fps
 		long world_debug = 0;        // ff8_world_interp_debug
@@ -48,7 +49,7 @@ namespace ff8interp
 		// Standalone only: roll every patch back and stay passive when any hook site holds bytes
 		// that differ from FF8_EN.exe on disk (another mod / FFNx patched it).
 		bool strict = true;          // ff8interp_strict
-		bool diag = false;           // ff8interp_diag: 1/s pacer line (mode, rate, paced/FFNx frames, flips/s)
+		bool diagnostics = false;    // ff8interp_diag: 1/s pacer line (mode, rate, paced/FFNx frames, flips/s)
 
 		// Read from the game's FFNx.toml (stock FFNx key), not from ff8interp.toml.
 		long ffnx_fps_limiter = 1;   // ff8_fps_limiter (FFNx default FPS_LIMITER_DEFAULT = 1)
@@ -57,7 +58,7 @@ namespace ff8interp
 	Options load_options(const std::string& dll_dir, const std::string& game_dir);
 
 	// ---- paths ----
-	std::string module_dir(HMODULE m);  // folder of a module, with trailing backslash
+	std::string module_dir(HMODULE module_handle);  // folder of a module, with trailing backslash
 	extern HMODULE g_self;
 
 	// ---- adapter_standalone.cpp ----

@@ -34,46 +34,46 @@ namespace ff8_tick
 {
 	struct ClockState
 	{
-		LARGE_INTEGER freq{};
-		LARGE_INTEGER last{};
+		LARGE_INTEGER counter_frequency{};
+		LARGE_INTEGER last_counter{};
 		uint32_t last_frame = 0xFFFFFFFF;
-		double cached = 0.0;
+		double cached_delta = 0.0;
 	};
 	inline ClockState& clock_state()
 	{
-		static ClockState s;
-		return s;
+		static ClockState state;
+		return state;
 	}
 
 	// Seconds since the previous presented frame, computed once per frame_counter and shared by
 	// every gate, so all modules see the same interval.
 	inline double frame_delta()
 	{
-		ClockState& s = clock_state();
-		if (s.last_frame == ff8_interp::frame_counter()) return s.cached;
-		s.last_frame = ff8_interp::frame_counter();
-		if (s.freq.QuadPart == 0) QueryPerformanceFrequency(&s.freq);
+		ClockState& state = clock_state();
+		if (state.last_frame == ff8_interp::frame_counter()) return state.cached_delta;
+		state.last_frame = ff8_interp::frame_counter();
+		if (state.counter_frequency.QuadPart == 0) QueryPerformanceFrequency(&state.counter_frequency);
 		LARGE_INTEGER now;
 		QueryPerformanceCounter(&now);
-		if (s.last.QuadPart == 0 || s.freq.QuadPart == 0)
+		if (state.last_counter.QuadPart == 0 || state.counter_frequency.QuadPart == 0)
 		{
-			s.last = now;
-			s.cached = 0.0;
-			return s.cached;
+			state.last_counter = now;
+			state.cached_delta = 0.0;
+			return state.cached_delta;
 		}
-		double dt = double(now.QuadPart - s.last.QuadPart) / double(s.freq.QuadPart);
-		s.last = now;
+		double dt = double(now.QuadPart - state.last_counter.QuadPart) / double(state.counter_frequency.QuadPart);
+		state.last_counter = now;
 		if (dt < 0.0) dt = 0.0;
 		if (dt > 0.25) dt = 0.25; // a load or a pause must not release a burst of logic ticks
-		s.cached = dt;
-		return s.cached;
+		state.cached_delta = dt * ff8_interp::speed(); // game time: the speedhack runs the logic faster
+		return state.cached_delta;
 	}
 
 	inline void clock_reset()
 	{
-		ClockState& s = clock_state();
-		s.last.QuadPart = 0;
-		s.last_frame = 0xFFFFFFFF;
-		s.cached = 0.0;
+		ClockState& state = clock_state();
+		state.last_counter.QuadPart = 0;
+		state.last_frame = 0xFFFFFFFF;
+		state.cached_delta = 0.0;
 	}
 }

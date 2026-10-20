@@ -1,7 +1,7 @@
 # FF8 Smooth Frames
 
-Smooth, high-frame-rate battles, world map and fields for **Final Fantasy VIII** (Steam 2013),
-without speeding the game up.
+Smooth, high-frame-rate battles, world map and fields for **Final Fantasy VIII** (Steam 2013, or
+Remastered through Junction VIII), without speeding the game up.
 
 https://github.com/user-attachments/assets/52ea8750-5e22-49be-bf56-cdd4d54ad73e
 
@@ -15,8 +15,12 @@ It is a Junction VIII mod and works with the FFNx that Junction VIII installs.
 
 ## Requirements
 
-- Final Fantasy VIII, **Steam 2013 edition, English** (`FF8_EN.exe`). Other languages, the 2000 CD
-  release and the Remastered edition are not supported; the mod stays off there.
+- Final Fantasy VIII in **English**, one of:
+  - the **Steam 2013 edition** (`FF8_EN.exe`);
+  - the **Remastered edition** set up in Junction VIII (J8 runs it with `ff8.exe` and FFNx as
+    `eax.dll`).
+
+  Other languages are not supported; the mod stays off there.
 - **Junction VIII** with FFNx 1.24.3 or newer.
 - Recommended: a display faster than 60 Hz. With vsync on (FFNx's default), the frame rate is
   capped at your display's refresh rate.
@@ -46,8 +50,9 @@ In Junction VIII, select **FF8 Smooth Frames** in your profile and click **Confi
 
 - Battles: characters, enemies, weapons, the camera and the Renzokuken bar.
 - Spell effects run at the right speed; some particles still move in steps.
-- Summons: Quezacotl and Shiva run at the right speed. Other summons still play too fast.
-- World map and fields: characters and the camera.
+- Summons run at the right speed (Odin is still being worked on).
+- World map and fields: characters, the camera, background scrolling and draw point sparkles.
+  Dialogue windows, timers and the play-time clock keep their normal speed.
 - Not changed yet: menus, the card game, the results screen, movies.
 
 Everything is still work in progress. Effects can appear slightly behind their sound, and vehicles
@@ -61,7 +66,8 @@ and chocobos on the world map are untested.
 
 ## Reporting a problem
 
-The mod writes `ff8interp.log` next to `FF8_EN.exe`. If something looks wrong or a place is still
+The mod writes `ff8interp.log` in the game folder (next to `FF8_EN.exe`, or `ff8.exe` on
+Remastered). If something looks wrong or a place is still
 choppy, turn on **Diagnostic log** in Configure Mod, play for a few seconds there, and attach the
 log to an [issue](https://github.com/CrashTestButter/ff8-smooth-frame/issues).
 

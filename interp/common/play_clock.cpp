@@ -27,70 +27,81 @@ namespace ff8_play_clock
 {
 	namespace
 	{
-		typedef void (__cdecl *play_clock_t)();
-		play_clock_t orig_play_clock = (play_clock_t)FN_PLAY_CLOCK;
+		typedef void (__cdecl *play_clock_fn)();
+		play_clock_fn original_play_clock = (play_clock_fn)FN_PLAY_CLOCK;
 
 		// The one side effect 0x4701B0 has on EVERY call, paused or not (0x470242:
 		// mov word [0x1CD2EFA], 1). A skipped call still makes it, so nothing that looks at the word
 		// can tell a paced call from a real one.
-		uint16_t* const CLOCK_RAN = (uint16_t*)0x1CD2EFA;
+		uint16_t* const CLOCK_RAN_FLAG = (uint16_t*)0x1CD2EFA;
 
-		constexpr double PERIOD = 1.0 / 60.0;
-		constexpr double BUDGET_CAP = 4.0 * PERIOD; // at most the native 4 steps after a stall
+		constexpr double CLOCK_STEP_SECONDS = 1.0 / 60.0;
+		constexpr double MAX_BUDGET_SECONDS = 4.0 * CLOCK_STEP_SECONDS; // at most the native 4 steps after a stall
 
-		double budget = 0.0;               // wall-clock seconds not yet spent on a clock step
-		uint32_t budget_frame = 0xFFFFFFFF; // host frame that last fed the budget
-		LARGE_INTEGER qpc_freq{}, qpc_last{};
+		double budget_seconds = 0.0;             // wall-clock seconds not yet spent on a clock step
+		uint32_t budget_fed_frame = 0xFFFFFFFF; // host frame that last fed the budget
+		LARGE_INTEGER counter_frequency{};
+		LARGE_INTEGER last_counter{};
 
 		// Own wall clock rather than ff8_tick::frame_delta(): the modules clock_reset() that one on
 		// every mode change and, in the field, on every loading frame (FIELD_FLOW != 4), which would
 		// stop play time during loads that the vanilla loop does count.
-		double elapsed()
+		double elapsed_seconds()
 		{
-			if (qpc_freq.QuadPart == 0) QueryPerformanceFrequency(&qpc_freq);
+			if (counter_frequency.QuadPart == 0) QueryPerformanceFrequency(&counter_frequency);
 			LARGE_INTEGER now;
 			QueryPerformanceCounter(&now);
-			if (qpc_last.QuadPart == 0 || qpc_freq.QuadPart == 0) { qpc_last = now; return 0.0; }
-			double dt = double(now.QuadPart - qpc_last.QuadPart) / double(qpc_freq.QuadPart);
-			qpc_last = now;
-			return dt < 0.0 ? 0.0 : dt; // the cap below bounds any long gap
+			if (last_counter.QuadPart == 0 || counter_frequency.QuadPart == 0)
+			{
+				last_counter = now;
+				return 0.0;
+			}
+			double seconds = double(now.QuadPart - last_counter.QuadPart) / double(counter_frequency.QuadPart);
+			last_counter = now;
+			return seconds < 0.0 ? 0.0 : seconds * ff8_interp::speed(); // the cap below bounds any long gap
 		}
 	}
 
-	bool patch_site(uint32_t site, void* hook, const char* who)
+	bool patch_site(uint32_t site, void* hook, const char* caller_name)
 	{
-		const uint8_t* const p = (const uint8_t*)site;
-		const uint32_t target = site + 5 + (uint32_t)(*(const int32_t*)(site + 1));
-		if (p[0] != 0xE8 || target != FN_PLAY_CLOCK)
+		const uint8_t* const site_bytes = (const uint8_t*)site;
+		const uint32_t call_target = site + 5 + (uint32_t)(*(const int32_t*)(site + 1));
+		if (site_bytes[0] != 0xE8)
 		{
-			ff8_interp::log_warning("%s: play clock call site %08X does not call %08X (%02X -> %08X), left alone.\n",
-				who, site, FN_PLAY_CLOCK, p[0], target);
+			ff8_interp::log_warning("%s: play clock call site %08X is not a call (%02X), left alone.\n", caller_name, site, site_bytes[0]);
 			return false;
 		}
-		ff8_interp::hook_call(site, hook);
-		return true;
+		if (call_target == FN_PLAY_CLOCK)
+		{
+			ff8_interp::hook_call(site, hook);
+			return true;
+		}
+		// FFNx's field movie sync (FFNx #1014) wraps the field sites: it skips clock steps while a movie
+		// faster than 15 fps plays, to keep 60 steps a second. The budget in run() already holds that rate,
+		// so the hook takes over the site and steps 0x4701B0 itself. Another mod's redirect is refused.
+		return ff8_interp::hook_call_chain(site, hook) != 0;
 	}
 
 	void run(bool paced)
 	{
 		if (!paced)
 		{
-			orig_play_clock();
+			original_play_clock();
 			return;
 		}
-		if (budget_frame != ff8_interp::frame_counter())
+		if (budget_fed_frame != ff8_interp::frame_counter())
 		{
 			// A gap since the previous paced call (another mode, a load) folds into the cap below.
-			budget_frame = ff8_interp::frame_counter();
-			budget += elapsed();
-			if (budget > BUDGET_CAP) budget = BUDGET_CAP;
+			budget_fed_frame = ff8_interp::frame_counter();
+			budget_seconds += elapsed_seconds();
+			if (budget_seconds > MAX_BUDGET_SECONDS) budget_seconds = MAX_BUDGET_SECONDS;
 		}
-		if (budget >= PERIOD)
+		if (budget_seconds >= CLOCK_STEP_SECONDS)
 		{
-			budget -= PERIOD;
-			orig_play_clock();
+			budget_seconds -= CLOCK_STEP_SECONDS;
+			original_play_clock();
 			return;
 		}
-		*CLOCK_RAN = 1;
+		*CLOCK_RAN_FLAG = 1;
 	}
 }

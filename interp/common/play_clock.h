@@ -36,9 +36,10 @@ namespace ff8_play_clock
 {
 	constexpr uint32_t FN_PLAY_CLOCK = 0x4701B0;
 
-	// Verify that `site` is an E8 call to 0x4701B0 and redirect it to `hook` (a void __cdecl ()).
-	// Returns false and leaves the site untouched on any mismatch. `who` names the caller in the log.
-	bool patch_site(uint32_t site, void* hook, const char* who);
+	// Verify that `site` is an E8 call to 0x4701B0 (or to FFNx's wrapper of it) and redirect it to `hook`
+	// (a void __cdecl ()). Returns false and leaves the site untouched on any mismatch. `caller_name`
+	// names the caller in the log.
+	bool patch_site(uint32_t site, void* hook, const char* caller_name);
 
 	// Body of a module's hook. With `paced` false the original runs on every call (the kill bit).
 	// Otherwise a 60 Hz wall-clock budget, fed once per host frame and capped at a few periods so a

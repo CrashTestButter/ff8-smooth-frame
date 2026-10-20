@@ -59,11 +59,13 @@ namespace ff8_interp
 
 #if FF8INTERP_DEV
 		long battle_debug = 0;       // ff8_battle_interp_debug (kill bits, battle/internal.h DBG_*)
+		long battle_debug2 = 0;      // ff8_battle_interp_debug2 (second kill-bit mask, battle/internal.h DBG2_*; the first is full at 1<<30)
 		long world_debug = 0;        // ff8_world_interp_debug
 		long field_debug = 0;        // ff8_field_interp_debug
 		bool trace = false;          // verbose trace lines (FFNx: trace_battle_animation)
 #else
 		static constexpr long battle_debug = 0;
+		static constexpr long battle_debug2 = 0;
 		static constexpr long world_debug = 0;
 		static constexpr long field_debug = 0;
 		static constexpr bool trace = false;
@@ -73,17 +75,17 @@ namespace ff8_interp
 	struct InterpHost
 	{
 		// Patch the rel32 operand of the call (E8), jump (E9) or indirect call (FF 15) at `site` so it
-		// reaches `fn`. The instruction itself is kept. (FFNx: replace_call.)
-		void (*hook_call)(uint32_t site, void* fn);
+		// reaches `hook`. The instruction itself is kept. (FFNx: replace_call.)
+		void (*hook_call)(uint32_t site, void* hook);
 		// Like hook_call, but for a site another module (FFNx itself) may already have redirected:
 		// the call is patched either way and the function it reached BEFORE our patch is returned, so
 		// the hook can chain to it instead of to the game's original. 0 = not patched.
-		uint32_t (*hook_call_chain)(uint32_t site, void* fn);
-		// Overwrite the first 5 bytes of the function at `addr` with `jmp fn` (E9 rel32). The module
+		uint32_t (*hook_call_chain)(uint32_t site, void* hook);
+		// Overwrite the first 5 bytes of the function at `address` with `jmp hook` (E9 rel32). The module
 		// copies the prologue into its own trampoline BEFORE calling this (make_trampoline), so the
 		// host must not relocate or keep a trampoline of its own. Returns an opaque host handle the
 		// module never uses. (FFNx: replace_function.)
-		uint32_t (*hook_function)(uint32_t addr, void* fn);
+		uint32_t (*hook_function)(uint32_t address, void* hook);
 
 		// printf-style log sinks, the format strings end in '\n'.
 		void (*log_info)(const char* fmt, ...);
@@ -103,6 +105,12 @@ namespace ff8_interp
 		// True on the English (US) 1.2 executable, the only one the addresses are verified on.
 		bool (*is_us_exe)();
 
+		// Game speed multiplier (FFNx: gamehacks.getCurrentSpeedhack(), 1.0 when off). Scales every
+		// wall clock the module paces logic with, so the speedhack speeds up the interpolated modes
+		// too. The host scales its own frame cap; the module never touches the render rate. Optional:
+		// nullptr = always 1.0.
+		double (*speed)();
+
 		InterpConfig config;
 	};
 
@@ -115,9 +123,10 @@ namespace ff8_interp
 	inline GameMode game_mode() { return g_host.game_mode(); }
 	inline uint32_t mode_id() { return g_host.mode_id(); }
 	inline bool is_us_exe() { return g_host.is_us_exe(); }
-	inline void hook_call(uint32_t site, void* fn) { g_host.hook_call(site, fn); }
-	inline uint32_t hook_call_chain(uint32_t site, void* fn) { return g_host.hook_call_chain(site, fn); }
-	inline uint32_t hook_function(uint32_t addr, void* fn) { return g_host.hook_function(addr, fn); }
+	inline double speed() { return g_host.speed ? g_host.speed() : 1.0; }
+	inline void hook_call(uint32_t site, void* hook) { g_host.hook_call(site, hook); }
+	inline uint32_t hook_call_chain(uint32_t site, void* hook) { return g_host.hook_call_chain(site, hook); }
+	inline uint32_t hook_function(uint32_t address, void* hook) { return g_host.hook_function(address, hook); }
 
 	template<typename... A> inline void log_info(const char* fmt, A... a) { g_host.log_info(fmt, a...); }
 	template<typename... A> inline void log_warning(const char* fmt, A... a) { g_host.log_warning(fmt, a...); }

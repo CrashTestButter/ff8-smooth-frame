@@ -30,36 +30,38 @@ namespace ff8_chara
 {
 	typedef void (__cdecl *animate_fn)(int, int);
 
-	constexpr int MAX_AHEAD = 6; // frames decoded ahead per tick (multi-frame advance, repeated poses)
+	constexpr int MAX_FRAMES_AHEAD = 6; // frames decoded ahead per tick (multi-frame advance, repeated poses)
 	struct CharaPose
 	{
 		bool valid = false;
-		uint8_t* anim = nullptr;   // animation the poses belong to
-		uint16_t frame = 0;        // frame f of poses[0]
-		uint16_t counter = 0;      // counter (frame << 4 | sub) at the last tick
-		int delta = 16;            // counter advance per tick measured on the last tick (16 = one frame)
-		int nposes = 0;            // poses[0..nposes-1] valid, consecutive frames from f
-		int hold = 1;              // ticks the decoded content has been unchanged (repeated poses)
-		int kdist = 0;             // first j with poses[j] != poses[0] (0 = none within MAX_AHEAD)
-		std::vector<uint8_t> poses[MAX_AHEAD + 1]; // 8 root bytes + 8 bytes per bone (dword pairs as the decoder stores them)
-		std::vector<uint8_t> last0;   // poses[0] of the previous tick
-		std::vector<uint8_t> shown;   // pose displayed on the last host frame (cross-fade source)
+		uint8_t* animation = nullptr;            // animation the poses belong to
+		uint16_t frame = 0;                      // frame f of poses[0]
+		uint16_t counter = 0;                    // counter (frame << 4 | sub) at the last tick
+		int counter_delta = 16;                  // counter advance per tick measured on the last tick (16 = one frame)
+		int pose_count = 0;                      // poses[0..pose_count-1] valid, consecutive frames from f
+		int hold_ticks = 1;                      // ticks the decoded content has been unchanged (repeated poses)
+		int next_distinct_pose = 0;              // first j with poses[j] != poses[0] (0 = none within MAX_FRAMES_AHEAD)
+		std::vector<uint8_t> poses[MAX_FRAMES_AHEAD + 1]; // 8 root bytes + 8 bytes per bone (dword pairs as the decoder stores them)
+		std::vector<uint8_t> previous_tick_pose; // poses[0] of the previous tick
+		std::vector<uint8_t> shown;              // pose displayed on the last host frame (cross-fade source)
 		std::vector<uint8_t> scratch;
+		std::vector<uint8_t> feed;               // field v13: scratch in the engine's raw read layout (skipped bones 4 bytes)
+		int fed_skipped_bones = -1;              // trace: skipped bones in the last feed
 	};
 
 	struct PoseInterp
 	{
-		uint8_t** table = nullptr; // 32 instance pointers
+		uint8_t** instance_table = nullptr; // 32 instance pointers
 		static constexpr int SLOTS = 32;
-		CharaPose chara[SLOTS];
+		CharaPose characters[SLOTS];
 		// Clips that were observed to wrap (counter decreased with the same clip). Until a clip has
 		// wrapped once we never blend past its last frame: non-looping clips hold their last frame.
 		std::unordered_map<uint8_t*, bool> clip_loops;
 
 		void reset();
 		// Wraps the engine's animate call: on a logic tick decodes the current and lookahead frames
-		// of every active instance; every host frame installs the blended raw pose and calls `orig`
+		// of every active instance; every host frame installs the blended raw pose and calls `original`
 		// exactly once (the routines submit the model / flip buffers), then restores the instance.
-		void animate(animate_fn orig, int p1, int p2, bool tick_real, float alpha, uint32_t tick_no);
+		void animate(animate_fn original, int arg1, int arg2, bool is_logic_tick, float alpha, uint32_t tick_number);
 	};
 }

@@ -51,20 +51,20 @@ namespace ff8_interp
 	double frame_rate(double host_rate)
 	{
 		if (!host_installed) return host_rate;
-		const InterpConfig& c = g_host.config;
+		const InterpConfig& config = g_host.config;
 		// Only while the sub-module is really in: an uncapped frame rate without the logic gates
 		// would run that mode's logic at the host rate (a skipped module - non-US exe, fps out of
 		// range - used to get the higher cap all the same).
 		switch (game_mode())
 		{
 		case GameMode::Battle:
-			if (c.battle_enabled && c.battle_fps > 0 && ff8_battle_anim::animations_installed()) return (double)c.battle_fps;
+			if (config.battle_enabled && config.battle_fps > 0 && ff8_battle_anim::animations_installed()) return (double)config.battle_fps;
 			break;
 		case GameMode::World:
-			if (c.world_enabled && c.world_fps > 0 && ff8_world::interp_installed()) return (double)c.world_fps;
+			if (config.world_enabled && config.world_fps > 0 && ff8_world::interp_installed()) return (double)config.world_fps;
 			break;
 		case GameMode::Field:
-			if (c.field_enabled && c.field_fps > 0 && ff8_field::interp_installed()) return (double)c.field_fps;
+			if (config.field_enabled && config.field_fps > 0 && ff8_field::interp_installed()) return (double)config.field_fps;
 			break;
 		default:
 			break;

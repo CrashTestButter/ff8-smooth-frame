@@ -24,111 +24,134 @@ namespace ff8interp
 {
 	namespace
 	{
-		typedef std::map<std::string, std::string> Flat;
+		typedef std::map<std::string, std::string> KeyValues;
 
-		std::string trim(const std::string& s)
+		std::string trim(const std::string& text)
 		{
-			size_t a = 0, b = s.size();
-			while (a < b && isspace((unsigned char)s[a])) a++;
-			while (b > a && isspace((unsigned char)s[b - 1])) b--;
-			return s.substr(a, b - a);
+			size_t begin = 0, end = text.size();
+			while (begin < end && isspace((unsigned char)text[begin])) begin++;
+			while (end > begin && isspace((unsigned char)text[end - 1])) end--;
+			return text.substr(begin, end - begin);
 		}
 
-		bool read_flat(const std::string& path, Flat& out)
+		bool read_flat_toml(const std::string& path, KeyValues& values)
 		{
-			FILE* f = fopen(path.c_str(), "rb");
-			if (!f) return false;
+			FILE* file = fopen(path.c_str(), "rb");
+			if (!file) return false;
 			std::string line;
-			char buf[1024];
+			char buffer[1024];
 			bool in_table = false;
-			while (fgets(buf, sizeof(buf), f))
+			while (fgets(buffer, sizeof(buffer), file))
 			{
-				line = buf;
+				line = buffer;
 				// strip a comment that is not inside a quoted string
 				bool quoted = false;
 				for (size_t i = 0; i < line.size(); i++)
 				{
 					if (line[i] == '"') quoted = !quoted;
-					else if (line[i] == '#' && !quoted) { line.resize(i); break; }
+					else if (line[i] == '#' && !quoted)
+					{
+						line.resize(i);
+						break;
+					}
 				}
 				line = trim(line);
 				if (line.empty()) continue;
-				if (line[0] == '[') { in_table = true; continue; }
+				if (line[0] == '[')
+				{
+					in_table = true;
+					continue;
+				}
 				if (in_table) continue;
-				size_t eq = line.find('=');
-				if (eq == std::string::npos) continue;
-				std::string key = trim(line.substr(0, eq));
-				std::string val = trim(line.substr(eq + 1));
-				if (val.size() >= 2 && val.front() == '"' && val.back() == '"') val = val.substr(1, val.size() - 2);
-				out[key] = val;
+				size_t equals_pos = line.find('=');
+				if (equals_pos == std::string::npos) continue;
+				std::string key = trim(line.substr(0, equals_pos));
+				std::string value = trim(line.substr(equals_pos + 1));
+				const bool is_quoted_string = value.size() >= 2 && value.front() == '"' && value.back() == '"';
+				if (is_quoted_string) value = value.substr(1, value.size() - 2);
+				values[key] = value;
 			}
-			fclose(f);
+			fclose(file);
 			return true;
 		}
 
-		bool get_bool(const Flat& m, const char* key, bool def)
+		bool get_bool(const KeyValues& values, const char* key, bool fallback)
 		{
-			auto it = m.find(key);
-			if (it == m.end()) return def;
-			if (it->second == "true") return true;
-			if (it->second == "false") return false;
-			log_warning("config: %s = %s is not true/false, using %s\n", key, it->second.c_str(), def ? "true" : "false");
-			return def;
+			auto entry = values.find(key);
+			if (entry == values.end()) return fallback;
+			if (entry->second == "true") return true;
+			if (entry->second == "false") return false;
+			log_warning("config: %s = %s is not true/false, using %s\n", key, entry->second.c_str(), fallback ? "true" : "false");
+			return fallback;
 		}
 
-		long get_long(const Flat& m, const char* key, long def)
+		long get_long(const KeyValues& values, const char* key, long fallback)
 		{
-			auto it = m.find(key);
-			if (it == m.end()) return def;
-			std::string v;
-			for (char c : it->second) if (c != '_') v += c;
-			const char* s = v.c_str();
+			auto entry = values.find(key);
+			if (entry == values.end()) return fallback;
+			std::string digits;
+			for (char c : entry->second)
+			{
+				if (c != '_') digits += c;
+			}
+			const char* text = digits.c_str();
 			char* end = nullptr;
-			long r;
-			if (v.size() > 2 && v[0] == '0' && (v[1] == 'x' || v[1] == 'X')) r = (long)strtoul(s + 2, &end, 16);
+			long result;
+			const bool is_hex = digits.size() > 2 && digits[0] == '0' && (digits[1] == 'x' || digits[1] == 'X');
+			if (is_hex)
+			{
+				result = (long)strtoul(text + 2, &end, 16);
+			}
 			else
 			{
-				double d = strtod(s, &end);
-				r = (long)d;
+				double as_double = strtod(text, &end);
+				result = (long)as_double;
 			}
-			if (end == s || *end != '\0')
+			if (end == text || *end != '\0')
 			{
-				log_warning("config: %s = %s is not a number, using %ld\n", key, it->second.c_str(), def);
-				return def;
+				log_warning("config: %s = %s is not a number, using %ld\n", key, entry->second.c_str(), fallback);
+				return fallback;
 			}
-			return r;
+			return result;
 		}
 	}
 
 	Options load_options(const std::string& dll_dir, const std::string& game_dir)
 	{
-		Options o;
-		Flat m;
+		Options options;
+		KeyValues values;
 		const std::string candidates[2] = { dll_dir + "ff8interp.toml", game_dir + "ff8interp.toml" };
-		for (const std::string& p : candidates)
+		for (const std::string& path : candidates)
 		{
-			if (!p.empty() && read_flat(p, m)) { o.source = p; break; }
+			if (!path.empty() && read_flat_toml(path, values))
+			{
+				options.source = path;
+				break;
+			}
 		}
-		if (o.source.empty()) o.source = "(no ff8interp.toml found, built-in defaults)";
+		if (options.source.empty()) options.source = "(no ff8interp.toml found, built-in defaults)";
 
-		o.battle_enabled = get_bool(m, "ff8_battle_anim_interp", o.battle_enabled);
-		o.battle_fps = get_long(m, "ff8_battle_fps", o.battle_fps);
-		o.world_enabled = get_bool(m, "ff8_world_interp", o.world_enabled);
-		o.world_fps = get_long(m, "ff8_world_fps", o.world_fps);
-		o.field_enabled = get_bool(m, "ff8_field_interp", o.field_enabled);
-		o.field_fps = get_long(m, "ff8_field_fps", o.field_fps);
+		options.battle_enabled = get_bool(values, "ff8_battle_anim_interp", options.battle_enabled);
+		options.battle_fps = get_long(values, "ff8_battle_fps", options.battle_fps);
+		options.world_enabled = get_bool(values, "ff8_world_interp", options.world_enabled);
+		options.world_fps = get_long(values, "ff8_world_fps", options.world_fps);
+		options.field_enabled = get_bool(values, "ff8_field_interp", options.field_enabled);
+		options.field_fps = get_long(values, "ff8_field_fps", options.field_fps);
 #if FF8INTERP_DEV
-		o.battle_debug = get_long(m, "ff8_battle_interp_debug", o.battle_debug);
-		o.world_debug = get_long(m, "ff8_world_interp_debug", o.world_debug);
-		o.field_debug = get_long(m, "ff8_field_interp_debug", o.field_debug);
-		o.trace = get_bool(m, "trace_battle_animation", o.trace);
+		options.battle_debug = get_long(values, "ff8_battle_interp_debug", options.battle_debug);
+		options.battle_debug2 = get_long(values, "ff8_battle_interp_debug2", options.battle_debug2);
+		options.world_debug = get_long(values, "ff8_world_interp_debug", options.world_debug);
+		options.field_debug = get_long(values, "ff8_field_interp_debug", options.field_debug);
+		options.trace = get_bool(values, "trace_battle_animation", options.trace);
 #endif
-		o.strict = get_bool(m, "ff8interp_strict", o.strict);
-		o.diag = get_bool(m, "ff8interp_diag", o.diag);
+		options.strict = get_bool(values, "ff8interp_strict", options.strict);
+		options.diagnostics = get_bool(values, "ff8interp_diag", options.diagnostics);
 
-		Flat ffnx;
-		if (read_flat(game_dir + "FFNx.toml", ffnx)) o.ffnx_fps_limiter = get_long(ffnx, "ff8_fps_limiter", o.ffnx_fps_limiter);
-		else log_warning("config: %sFFNx.toml not readable, assuming ff8_fps_limiter = %ld\n", game_dir.c_str(), o.ffnx_fps_limiter);
-		return o;
+		KeyValues ffnx_values;
+		if (read_flat_toml(game_dir + "FFNx.toml", ffnx_values))
+			options.ffnx_fps_limiter = get_long(ffnx_values, "ff8_fps_limiter", options.ffnx_fps_limiter);
+		else
+			log_warning("config: %sFFNx.toml not readable, assuming ff8_fps_limiter = %ld\n", game_dir.c_str(), options.ffnx_fps_limiter);
+		return options;
 	}
 }

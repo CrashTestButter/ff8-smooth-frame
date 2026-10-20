@@ -24,35 +24,36 @@ namespace
 {
 	bool is_ff8_game_process()
 	{
-		char path[MAX_PATH * 2] = {};
-		GetModuleFileNameA(nullptr, path, (DWORD)sizeof(path));
-		const char* base = strrchr(path, '\\');
-		base = base ? base + 1 : path;
+		char exe_path[MAX_PATH * 2] = {};
+		GetModuleFileNameA(nullptr, exe_path, (DWORD)sizeof(exe_path));
+		const char* exe_name = strrchr(exe_path, '\\');
+		exe_name = exe_name ? exe_name + 1 : exe_path;
 		// FF8_EN.exe (Steam 2013) / FF8.exe (2000). Not the launcher, not Chocobo World.
-		return _strnicmp(base, "FF8_", 4) == 0 ? _stricmp(base, "FF8_Launcher.exe") != 0 : _stricmp(base, "FF8.exe") == 0;
+		const bool has_ff8_prefix = _strnicmp(exe_name, "FF8_", 4) == 0;
+		return has_ff8_prefix ? _stricmp(exe_name, "FF8_Launcher.exe") != 0 : _stricmp(exe_name, "FF8.exe") == 0;
 	}
 }
 
-BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID)
+BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID)
 {
 	if (reason != DLL_PROCESS_ATTACH) return TRUE;
-	DisableThreadLibraryCalls(inst);
-	ff8interp::g_self = inst;
+	DisableThreadLibraryCalls(instance);
+	ff8interp::g_self = instance;
 
 	if (!is_ff8_game_process()) return TRUE;
 
 	// One instance per process, even if both J8 and an ASI loader load a copy.
-	char name[64];
-	snprintf(name, sizeof(name), "Local\\ff8interp_%lu", GetCurrentProcessId());
-	HANDLE mtx = CreateMutexA(nullptr, FALSE, name);
-	if (mtx == nullptr || GetLastError() == ERROR_ALREADY_EXISTS)
+	char mutex_name[64];
+	snprintf(mutex_name, sizeof(mutex_name), "Local\\ff8interp_%lu", GetCurrentProcessId());
+	HANDLE instance_mutex = CreateMutexA(nullptr, FALSE, mutex_name);
+	if (instance_mutex == nullptr || GetLastError() == ERROR_ALREADY_EXISTS)
 	{
-		if (mtx) CloseHandle(mtx);
+		if (instance_mutex) CloseHandle(instance_mutex);
 		return TRUE;
 	}
 	// The mutex handle is kept open for the life of the process on purpose.
 
-	HANDLE t = CreateThread(nullptr, 0, ff8interp::watcher_thread, nullptr, 0, nullptr);
-	if (t) CloseHandle(t);
+	HANDLE watcher = CreateThread(nullptr, 0, ff8interp::watcher_thread, nullptr, 0, nullptr);
+	if (watcher) CloseHandle(watcher);
 	return TRUE;
 }
